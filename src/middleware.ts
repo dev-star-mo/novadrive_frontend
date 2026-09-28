@@ -1,10 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_FLAG_COOKIE } from "@/lib/auth/constants";
 
-/**
- * Next.js middleware cannot read in-memory Bearer tokens.
- * Auth and admin checks use the client session provider + Laravel API.
- */
-export async function middleware(_request: NextRequest) {
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith("/admin")) {
+    const hasSession = request.cookies.get(SESSION_FLAG_COOKIE)?.value === "1";
+    if (!hasSession) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      url.searchParams.set("auth", "required");
+      return NextResponse.redirect(url);
+    }
+  }
+
   return NextResponse.next();
 }
 

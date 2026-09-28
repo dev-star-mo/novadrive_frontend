@@ -113,6 +113,20 @@ async function authJsonFetch(path: string, init: RequestInit = {}): Promise<Resp
   return fetch(apiUrl(path), { ...init, headers });
 }
 
+async function authJsonFetchWithRefresh(
+  path: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  let res = await authJsonFetch(path, init);
+  if (res.status === 401) {
+    const restored = await tryRestoreAccessTokenFromRefresh();
+    if (restored) {
+      res = await authJsonFetch(path, init);
+    }
+  }
+  return res;
+}
+
 /** Optional: restore access token using Laravel httpOnly refresh cookie + credentials. */
 export async function tryRestoreAccessTokenFromRefresh(): Promise<boolean> {
   if (getAccessToken()) return true;
@@ -211,11 +225,14 @@ export async function fetchCurrentUser(): Promise<
   }
 
   if (!getAccessToken()) {
+    await tryRestoreAccessTokenFromRefresh();
+  }
+  if (!getAccessToken()) {
     return { ok: false, unauthorized: true };
   }
 
   try {
-    const res = await authJsonFetch("/me", {
+    const res = await authJsonFetchWithRefresh("/me", {
       method: "POST",
       body: JSON.stringify({}),
     });
@@ -327,7 +344,7 @@ export async function updatePassword(
   }
 
   try {
-    const res = await authJsonFetch("/password-update", {
+    const res = await authJsonFetchWithRefresh("/password-update", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -357,16 +374,10 @@ export async function generateForgotPasswordToken(
     };
   }
 
-  const token = getAccessToken();
-  const headers = new Headers(JSON_HEADERS);
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
   try {
     const res = await jsonFetch("/forgot-password/generate-token", {
       method: "POST",
-      headers,
+      headers: JSON_HEADERS,
       body: JSON.stringify({ email: email.trim() }),
     });
 
@@ -396,16 +407,10 @@ export async function verifyForgotPasswordToken(
     };
   }
 
-  const access = getAccessToken();
-  const headers = new Headers(JSON_HEADERS);
-  if (access) {
-    headers.set("Authorization", `Bearer ${access}`);
-  }
-
   try {
     const res = await jsonFetch("/forgot-password/verify-token", {
       method: "POST",
-      headers,
+      headers: JSON_HEADERS,
       body: JSON.stringify({
         email: email.trim(),
         token,
@@ -444,16 +449,10 @@ export async function resetForgotPassword(
     };
   }
 
-  const access = getAccessToken();
-  const headers = new Headers(JSON_HEADERS);
-  if (access) {
-    headers.set("Authorization", `Bearer ${access}`);
-  }
-
   try {
     const res = await jsonFetch("/forgot-password/reset-password", {
       method: "POST",
-      headers,
+      headers: JSON_HEADERS,
       body: JSON.stringify({
         email: payload.email.trim(),
         password: payload.password,
@@ -484,7 +483,7 @@ export async function logoutUser(): Promise<void> {
   }
 
   try {
-    await authJsonFetch("/logout", { method: "POST" });
+    await authJsonFetchWithRefresh("/logout", { method: "POST" });
   } catch {
     // ignore
   } finally {
@@ -544,16 +543,10 @@ export async function exchangeGoogleAuthCode(
     };
   }
 
-  const access = getAccessToken();
-  const headers = new Headers(JSON_HEADERS);
-  if (access) {
-    headers.set("Authorization", `Bearer ${access}`);
-  }
-
   try {
     const res = await jsonFetch("/auth/code-exchange", {
       method: "POST",
-      headers,
+      headers: JSON_HEADERS,
       body: JSON.stringify({
         code: payload.code,
         role: payload.role,
@@ -635,7 +628,7 @@ export async function fetchUsersIndex(): Promise<
   }
 
   try {
-    const res = await authJsonFetch("/users", { method: "GET" });
+    const res = await authJsonFetchWithRefresh("/users", { method: "GET" });
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
     if (res.status === 401 || res.status === 403) {
