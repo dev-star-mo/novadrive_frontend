@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Sanctum session cookies live on the Laravel API domain and are not visible here.
- * Route protection for /admin relies on the session provider + Laravel authorization.
+ * Next.js middleware cannot read in-memory Bearer tokens.
+ * Auth and admin checks use the client session provider + Laravel API.
  */
 export async function middleware(_request: NextRequest) {
   return NextResponse.next();

@@ -1,23 +1,29 @@
 /**
- * Browser-side Laravel API client using Sanctum SPA authentication.
- * Session is stored in httpOnly cookies on the API domain; requests use
- * credentials: "include" and CSRF protection via /sanctum/csrf-cookie.
+ * Browser-side Laravel API client (Bearer token authentication).
  */
 
+import { getAccessToken, setAccessToken, clearAccessToken } from "@/lib/auth/token-store";
 import { normalizeAuthUser } from "@/lib/auth/user-normalize";
 import type { AuthUser } from "@/lib/auth/types";
+import type { AdminUser } from "@/types/admin-user";
+
+export { getAccessToken, setAccessToken, clearAccessToken } from "@/lib/auth/token-store";
 
 export const LARAVEL_API_BASE =
   process.env.NEXT_PUBLIC_LARAVEL_API_URL ??
   process.env.NEXT_PUBLIC_PHP_API_URL ??
   "";
 
+const JSON_HEADERS: HeadersInit = {
+  Accept: "application/json",
+  "Content-Type": "application/json",
+};
+
 type LaravelErrorBody = {
   message?: string;
   errors?: Record<string, string[]>;
 };
 
-/** Flatten Laravel validation errors into a single user-facing string. */
 export function parseLaravelErrorBody(data: LaravelErrorBody, fallback: string): string {
   if (data.errors && typeof data.errors === "object") {
     const first = Object.values(data.errors).flat()[0];
@@ -29,7 +35,6 @@ export function parseLaravelErrorBody(data: LaravelErrorBody, fallback: string):
   return fallback;
 }
 
-/** True when Laravel rejected login because the account email is not verified yet. */
 export function isUnverifiedLoginError(message: string): boolean {
   const m = message.toLowerCase();
   return (
@@ -46,49 +51,15 @@ function apiUrl(path: string): string {
   return `${LARAVEL_API_BASE.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-/** Read Laravel's XSRF-TOKEN cookie (must be exposed to the SPA domain via Sanctum config). */
-function getXsrfTokenFromDocument(): string | null {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
-  if (!match?.[1]) return null;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
-  }
-}
-
-/** Prime Sanctum CSRF cookie before state-changing requests. */
-export async function ensureSanctumCsrfCookie(): Promise<void> {
-  if (!LARAVEL_API_BASE) return;
-  await fetch(apiUrl("/sanctum/csrf-cookie"), {
-    method: "GET",
-    credentials: "include",
-  });
-}
-
-async function sanctumFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const method = (init.method ?? "GET").toUpperCase();
-  if (method !== "GET" && method !== "HEAD") {
-    await ensureSanctumCsrfCookie();
-  }
-
-  const headers = new Headers(init.headers);
-  headers.set("Accept", "application/json");
-  if (init.body != null && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  const xsrf = getXsrfTokenFromDocument();
-  if (xsrf) {
-    headers.set("X-XSRF-TOKEN", xsrf);
-  }
-
-  return fetch(apiUrl(path), {
-    ...init,
-    headers,
-    credentials: "include",
-  });
+function extractAccessToken(data: Record<string, unknown>): string {
+  const nested = data.data as Record<string, unknown> | undefined;
+  return (
+    (typeof data.token === "string" && data.token) ||
+    (typeof data.access_token === "string" && data.access_token) ||
+    (typeof nested?.token === "string" && nested.token) ||
+    (typeof nested?.access_token === "string" && nested.access_token) ||
+    ""
+  );
 }
 
 function extractUserRecord(data: Record<string, unknown>): Record<string, unknown> | null {
@@ -114,6 +85,60 @@ function extractUserRecord(data: Record<string, unknown>): Record<string, unknow
   return null;
 }
 
+async function jsonFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (init.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return fetch(apiUrl(path), { ...init, headers });
+}
+
+async function authJsonFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = getAccessToken();
+  if (!token) {
+    return new Response(JSON.stringify({ message: "Unauthenticated." }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  headers.set("Authorization", `Bearer ${token}`);
+  if (init.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  return fetch(apiUrl(path), { ...init, headers });
+}
+
+/** Optional: restore access token using Laravel httpOnly refresh cookie + credentials. */
+export async function tryRestoreAccessTokenFromRefresh(): Promise<boolean> {
+  if (getAccessToken()) return true;
+
+  const refreshPath = process.env.NEXT_PUBLIC_LARAVEL_REFRESH_PATH;
+  if (!LARAVEL_API_BASE || !refreshPath) return false;
+
+  try {
+    const res = await fetch(apiUrl(refreshPath), {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return false;
+
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const token = extractAccessToken(data);
+    if (!token) return false;
+
+    setAccessToken(token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export type RegisterUserPayload = {
   name: string;
   email: string;
@@ -128,6 +153,7 @@ export type LoginUserPayload = {
 };
 
 export type LoginSuccess = {
+  token: string;
   user: AuthUser | null;
 };
 
@@ -142,8 +168,9 @@ export async function loginUser(
   }
 
   try {
-    const res = await sanctumFetch("/login", {
+    const res = await jsonFetch("/login", {
       method: "POST",
+      headers: JSON_HEADERS,
       body: JSON.stringify({
         email: payload.email.trim(),
         password: payload.password,
@@ -160,17 +187,22 @@ export async function loginUser(
       };
     }
 
+    const token = extractAccessToken(data);
+    if (!token) {
+      return { ok: false, error: "Login succeeded but no token was returned." };
+    }
+
+    setAccessToken(token);
     const raw = extractUserRecord(data);
     return {
       ok: true,
-      data: { user: raw ? normalizeAuthUser(raw) : null },
+      data: { token, user: raw ? normalizeAuthUser(raw) : null },
     };
   } catch {
     return { ok: false, error: "Something went wrong. Please try again." };
   }
 }
 
-/** Load the authenticated user from Laravel (`POST /me`, Sanctum session cookie). */
 export async function fetchCurrentUser(): Promise<
   { ok: true; user: AuthUser } | { ok: false; unauthorized: boolean }
 > {
@@ -178,13 +210,18 @@ export async function fetchCurrentUser(): Promise<
     return { ok: false, unauthorized: false };
   }
 
+  if (!getAccessToken()) {
+    return { ok: false, unauthorized: true };
+  }
+
   try {
-    const res = await sanctumFetch("/me", {
+    const res = await authJsonFetch("/me", {
       method: "POST",
       body: JSON.stringify({}),
     });
 
     if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
       return { ok: false, unauthorized: true };
     }
 
@@ -216,8 +253,9 @@ export async function verifyEmail(
   }
 
   try {
-    const res = await sanctumFetch("/verify-email", {
+    const res = await jsonFetch("/verify-email", {
       method: "POST",
+      headers: JSON_HEADERS,
       body: JSON.stringify({ token }),
     });
 
@@ -247,8 +285,9 @@ export async function resendVerificationEmail(
   }
 
   try {
-    const res = await sanctumFetch("/resend-verification-link", {
+    const res = await jsonFetch("/resend-verification-link", {
       method: "POST",
+      headers: JSON_HEADERS,
       body: JSON.stringify({ email: email.trim() }),
     });
 
@@ -283,8 +322,12 @@ export async function updatePassword(
     };
   }
 
+  if (!getAccessToken()) {
+    return { ok: false, error: "You must be signed in to change your password." };
+  }
+
   try {
-    const res = await sanctumFetch("/password-update", {
+    const res = await authJsonFetch("/password-update", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -314,9 +357,16 @@ export async function generateForgotPasswordToken(
     };
   }
 
+  const token = getAccessToken();
+  const headers = new Headers(JSON_HEADERS);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   try {
-    const res = await sanctumFetch("/forgot-password/generate-token", {
+    const res = await jsonFetch("/forgot-password/generate-token", {
       method: "POST",
+      headers,
       body: JSON.stringify({ email: email.trim() }),
     });
 
@@ -346,9 +396,16 @@ export async function verifyForgotPasswordToken(
     };
   }
 
+  const access = getAccessToken();
+  const headers = new Headers(JSON_HEADERS);
+  if (access) {
+    headers.set("Authorization", `Bearer ${access}`);
+  }
+
   try {
-    const res = await sanctumFetch("/forgot-password/verify-token", {
+    const res = await jsonFetch("/forgot-password/verify-token", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         email: email.trim(),
         token,
@@ -387,9 +444,16 @@ export async function resetForgotPassword(
     };
   }
 
+  const access = getAccessToken();
+  const headers = new Headers(JSON_HEADERS);
+  if (access) {
+    headers.set("Authorization", `Bearer ${access}`);
+  }
+
   try {
-    const res = await sanctumFetch("/forgot-password/reset-password", {
+    const res = await jsonFetch("/forgot-password/reset-password", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         email: payload.email.trim(),
         password: payload.password,
@@ -414,12 +478,17 @@ export async function resetForgotPassword(
 }
 
 export async function logoutUser(): Promise<void> {
-  if (!LARAVEL_API_BASE) return;
+  if (!LARAVEL_API_BASE) {
+    clearAccessToken();
+    return;
+  }
 
   try {
-    await sanctumFetch("/logout", { method: "POST" });
+    await authJsonFetch("/logout", { method: "POST" });
   } catch {
-    // Clear local UI state even if the network call fails.
+    // ignore
+  } finally {
+    clearAccessToken();
   }
 }
 
@@ -434,8 +503,9 @@ export async function registerUser(
   }
 
   try {
-    const res = await sanctumFetch("/register", {
+    const res = await jsonFetch("/register", {
       method: "POST",
+      headers: JSON_HEADERS,
       body: JSON.stringify(payload),
     });
 
@@ -474,9 +544,16 @@ export async function exchangeGoogleAuthCode(
     };
   }
 
+  const access = getAccessToken();
+  const headers = new Headers(JSON_HEADERS);
+  if (access) {
+    headers.set("Authorization", `Bearer ${access}`);
+  }
+
   try {
-    const res = await sanctumFetch("/auth/code-exchange", {
+    const res = await jsonFetch("/auth/code-exchange", {
       method: "POST",
+      headers,
       body: JSON.stringify({
         code: payload.code,
         role: payload.role,
@@ -493,11 +570,91 @@ export async function exchangeGoogleAuthCode(
       };
     }
 
+    const token = extractAccessToken(data);
+    if (!token) {
+      return { ok: false, error: "Google sign-in succeeded but no token was returned." };
+    }
+
+    setAccessToken(token);
     const raw = extractUserRecord(data);
     return {
       ok: true,
-      data: { user: raw ? normalizeAuthUser(raw) : null },
+      data: { token, user: raw ? normalizeAuthUser(raw) : null },
     };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+function normalizeAdminUser(raw: Record<string, unknown>): AdminUser {
+  return {
+    id: String(raw.id ?? ""),
+    name:
+      raw.name != null
+        ? String(raw.name)
+        : raw.full_name != null
+          ? String(raw.full_name)
+          : null,
+    email: String(raw.email ?? ""),
+    role: String(raw.role ?? "customer"),
+    email_verified: Boolean(
+      raw.email_verified ?? raw.email_verified_at != null
+    ),
+    created_at: String(raw.created_at ?? ""),
+  };
+}
+
+function extractUsersList(data: Record<string, unknown>): Record<string, unknown>[] {
+  if (Array.isArray(data)) {
+    return data as Record<string, unknown>[];
+  }
+  if (Array.isArray(data.data)) {
+    return data.data as Record<string, unknown>[];
+  }
+  if (data.data && typeof data.data === "object") {
+    const nested = data.data as Record<string, unknown>;
+    if (Array.isArray(nested.data)) {
+      return nested.data as Record<string, unknown>[];
+    }
+  }
+  if (Array.isArray(data.users)) {
+    return data.users as Record<string, unknown>[];
+  }
+  return [];
+}
+
+/** List users (`GET /users`, Bearer token). */
+export async function fetchUsersIndex(): Promise<
+  { ok: true; users: AdminUser[] } | { ok: false; error: string }
+> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch("/users", { method: "GET" });
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data as LaravelErrorBody, "Could not load users."),
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data as LaravelErrorBody, "Could not load users."),
+      };
+    }
+
+    const users = extractUsersList(data).map(normalizeAdminUser);
+    return { ok: true, users };
   } catch {
     return { ok: false, error: "Something went wrong. Please try again." };
   }

@@ -9,6 +9,7 @@ import {
   MessageSquare,
   TrendingUp,
   Users,
+  UserCircle,
   Wallet,
   PlusCircle,
   LayoutDashboard
@@ -19,6 +20,7 @@ import { FleetTab } from "@/components/admin/FleetTab";
 import { MessagesTab } from "@/components/admin/MessagesTab";
 import { LeaseRequestsTab } from "@/components/admin/LeaseRequestsTab";
 import { ReviewsTab } from "@/components/admin/ReviewsTab";
+import { UsersTab } from "@/components/admin/UsersTab";
 import { AddCarModal } from "@/components/admin/AddCarModal";
 
 type Props = {
@@ -31,6 +33,7 @@ type Props = {
 const TABS = [
   { id: "bookings", label: "Bookings", icon: CalendarCheck },
   { id: "fleet", label: "Fleet", icon: CarIcon },
+  { id: "users", label: "Users", icon: UserCircle },
   { id: "leases", label: "Leases", icon: Users },
   { id: "reviews", label: "Reviews", icon: Star },
   { id: "messages", label: "Messages", icon: MessageSquare },
@@ -152,6 +155,7 @@ export default function AdminDashboardClient({ bookings, cars: initialCars, leas
             onAddCar={() => setShowAddCar(true)}
           />
         )}
+        {activeTab === "users" && <UsersTab />}
         {activeTab === "leases" && (
           <LeaseRequestsTab initialRequests={leaseRequests} />
         )}

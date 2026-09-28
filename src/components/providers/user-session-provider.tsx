@@ -9,7 +9,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ensureSanctumCsrfCookie, fetchCurrentUser, logoutUser } from "@/lib/auth/laravel-client";
+import {
+  fetchCurrentUser,
+  logoutUser,
+  tryRestoreAccessTokenFromRefresh,
+} from "@/lib/auth/laravel-client";
 import type { AuthUser } from "@/lib/auth/types";
 import type { Profile } from "@/types/database";
 
@@ -30,6 +34,8 @@ export function UserSessionProvider({ children }: { children: ReactNode }) {
 
   const fetchMe = useCallback(async () => {
     try {
+      await tryRestoreAccessTokenFromRefresh();
+
       const me = await fetchCurrentUser();
       if (me.ok) {
         setUser(me.user);
@@ -44,7 +50,6 @@ export function UserSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void ensureSanctumCsrfCookie();
     void fetchMe();
   }, [fetchMe]);
 
