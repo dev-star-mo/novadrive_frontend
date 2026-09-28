@@ -10,17 +10,22 @@ import {
   TrendingUp,
   Users,
   UserCircle,
+  ShieldCheck,
   Wallet,
   PlusCircle,
-  LayoutDashboard
+  LayoutDashboard,
+  Zap,
 } from "lucide-react";
 import type { Car, BookingWithCar, LeaseRequest, Review } from "@/types/database";
+import { useUserSession } from "@/components/providers/user-session-provider";
 import { BookingsTab } from "@/components/admin/BookingsTab";
 import { FleetTab } from "@/components/admin/FleetTab";
 import { MessagesTab } from "@/components/admin/MessagesTab";
 import { LeaseRequestsTab } from "@/components/admin/LeaseRequestsTab";
 import { ReviewsTab } from "@/components/admin/ReviewsTab";
 import { UsersTab } from "@/components/admin/UsersTab";
+import { AdminsTab } from "@/components/admin/AdminsTab";
+import { SuperAdminsTab } from "@/components/admin/SuperAdminsTab";
 import { AddCarModal } from "@/components/admin/AddCarModal";
 
 type Props = {
@@ -30,7 +35,7 @@ type Props = {
   reviews: Review[];
 };
 
-const TABS = [
+const BASE_TABS = [
   { id: "bookings", label: "Bookings", icon: CalendarCheck },
   { id: "fleet", label: "Fleet", icon: CarIcon },
   { id: "users", label: "Users", icon: UserCircle },
@@ -39,10 +44,22 @@ const TABS = [
   { id: "messages", label: "Messages", icon: MessageSquare },
 ] as const;
 
-type TabId = (typeof TABS)[number]["id"];
+// Tabs only superadmins can see
+const SUPERADMIN_TABS = [
+  { id: "admins", label: "Admins", icon: ShieldCheck },
+  { id: "superadmins", label: "Super Admins", icon: Zap },
+] as const;
+
+type TabId =
+  | (typeof BASE_TABS)[number]["id"]
+  | (typeof SUPERADMIN_TABS)[number]["id"];
 
 export default function AdminDashboardClient({ bookings, cars: initialCars, leaseRequests: initialLeaseRequests, reviews: initialReviews }: Props) {
+  const { isSuperAdmin } = useUserSession();
   const [activeTab, setActiveTab] = useState<TabId>("bookings");
+  const TABS = isSuperAdmin
+    ? [...BASE_TABS, ...SUPERADMIN_TABS]
+    : [...BASE_TABS];
   const [cars, setCars] = useState<Car[]>(initialCars);
   const [leaseRequests] = useState<LeaseRequest[]>(initialLeaseRequests);
   const [reviews] = useState<Review[]>(initialReviews);
@@ -156,6 +173,8 @@ export default function AdminDashboardClient({ bookings, cars: initialCars, leas
           />
         )}
         {activeTab === "users" && <UsersTab />}
+        {activeTab === "admins" && isSuperAdmin && <AdminsTab />}
+        {activeTab === "superadmins" && isSuperAdmin && <SuperAdminsTab />}
         {activeTab === "leases" && (
           <LeaseRequestsTab initialRequests={leaseRequests} />
         )}

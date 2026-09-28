@@ -589,7 +589,10 @@ function normalizeAdminUser(raw: Record<string, unknown>): AdminUser {
           ? String(raw.full_name)
           : null,
     email: String(raw.email ?? ""),
-    role: String(raw.role ?? "customer"),
+    phone_number:
+      raw.phone_number != null ? String(raw.phone_number) : null,
+    role: String(raw.role ?? "customer"), // "customer" | "admin" | "superadmin"
+    is_active: raw.is_active != null ? Boolean(raw.is_active) : true,
     email_verified: Boolean(
       raw.email_verified ?? raw.email_verified_at != null
     ),
@@ -614,6 +617,400 @@ function extractUsersList(data: Record<string, unknown>): Record<string, unknown
     return data.users as Record<string, unknown>[];
   }
   return [];
+}
+
+/** Fetch a single user (`GET /users/:id`, Bearer token). */
+export async function fetchUser(
+  id: string
+): Promise<{ ok: true; user: AdminUser } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/users/${id}`, { method: "GET" });
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not load user.") };
+    }
+
+    const raw = extractUserRecord(data);
+    if (!raw) {
+      return { ok: false, error: "No user record in response." };
+    }
+
+    return { ok: true, user: normalizeAdminUser(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+export type UpdateUserPayload = {
+  name?: string;
+  phone_number?: string;
+};
+
+/** Update a user (`PUT /users/:id`, Bearer token). */
+export async function updateUser(
+  id: string,
+  payload: UpdateUserPayload
+): Promise<{ ok: true; user: AdminUser } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not update user.") };
+    }
+
+    const raw = extractUserRecord(data);
+    if (!raw) {
+      return { ok: false, error: "User updated but no record was returned." };
+    }
+
+    return { ok: true, user: normalizeAdminUser(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** Delete a user (`DELETE /users/:id`, Bearer token). */
+export async function deleteUser(
+  id: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/users/${id}`, { method: "DELETE" });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    // 204 No Content — success with no body
+    if (res.status === 204 || res.ok) {
+      return { ok: true };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+    return { ok: false, error: parseLaravelErrorBody(data, "Could not delete user.") };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** Activate a user (`PATCH /users/:id/activate`, Bearer token). */
+export async function activateUser(
+  id: string
+): Promise<{ ok: true; user: AdminUser } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/users/${id}/activate`, { method: "PATCH" });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not activate user.") };
+    }
+
+    const raw = extractUserRecord(data);
+    if (!raw) {
+      return { ok: false, error: "User activated but no record was returned." };
+    }
+
+    return { ok: true, user: normalizeAdminUser(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** Deactivate a user (`PATCH /users/:id/deactivate`, Bearer token). */
+export async function deactivateUser(
+  id: string
+): Promise<{ ok: true; user: AdminUser } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/users/${id}/deactivate`, { method: "PATCH" });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not deactivate user.") };
+    }
+
+    const raw = extractUserRecord(data);
+    if (!raw) {
+      return { ok: false, error: "User deactivated but no record was returned." };
+    }
+
+    return { ok: true, user: normalizeAdminUser(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** Promote a user to admin (`POST /users/:id/make-admin`, Bearer token). */
+export async function makeUserAdmin(
+  id: string
+): Promise<{ ok: true; user: AdminUser } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/users/${id}/make-admin`, { method: "POST" });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not promote user.") };
+    }
+
+    const raw = extractUserRecord(data);
+    if (!raw) {
+      return { ok: false, error: "User promoted but no record was returned." };
+    }
+
+    return { ok: true, user: normalizeAdminUser(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** Demote a user from admin (`POST /users/:id/demote-admin`, Bearer token). */
+export async function demoteUserAdmin(
+  id: string
+): Promise<{ ok: true; user: AdminUser } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/users/${id}/demote-admin`, { method: "POST" });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not demote user.") };
+    }
+
+    const raw = extractUserRecord(data);
+    if (!raw) {
+      return { ok: false, error: "User demoted but no record was returned." };
+    }
+
+    return { ok: true, user: normalizeAdminUser(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+export type CreateUserPayload = {
+  name: string;
+  email: string;
+};
+
+/** Create a user (`POST /users`, Bearer token). */
+export async function createUser(
+  payload: CreateUserPayload
+): Promise<{ ok: true; user: AdminUser } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch("/users", {
+      method: "POST",
+      body: JSON.stringify({
+        name: payload.name.trim(),
+        email: payload.email.trim(),
+      }),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data, "Unauthorized."),
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data, "Could not create user."),
+      };
+    }
+
+    const raw = extractUserRecord(data);
+    if (!raw) {
+      return { ok: false, error: "User created but no record was returned." };
+    }
+
+    return { ok: true, user: normalizeAdminUser(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** List super-admins (`GET /super-admins/list`, Bearer token). */
+export async function fetchSuperAdminsList(): Promise<
+  { ok: true; users: AdminUser[] } | { ok: false; error: string }
+> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch("/super-admins/list", { method: "GET" });
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data as LaravelErrorBody, "Could not load super-admins."),
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data as LaravelErrorBody, "Could not load super-admins."),
+      };
+    }
+
+    const users = extractUsersList(data).map(normalizeAdminUser);
+    return { ok: true, users };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** List admin users (`GET /admins/list`, Bearer token). */
+export async function fetchAdminsList(): Promise<
+  { ok: true; users: AdminUser[] } | { ok: false; error: string }
+> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch("/admins/list", { method: "GET" });
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data as LaravelErrorBody, "Could not load admins."),
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data as LaravelErrorBody, "Could not load admins."),
+      };
+    }
+
+    const users = extractUsersList(data).map(normalizeAdminUser);
+    return { ok: true, users };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
 }
 
 /** List users (`GET /users`, Bearer token). */

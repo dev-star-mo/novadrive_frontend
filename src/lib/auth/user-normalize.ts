@@ -10,7 +10,13 @@ export function normalizeAuthUser(raw: Record<string, unknown>): AuthUser {
 
   const roleRaw = raw.role;
   const role =
-    roleRaw === "admin" ? "admin" : roleRaw === "customer" ? "user" : "user";
+    roleRaw === "superadmin"
+      ? "superadmin"
+      : roleRaw === "admin"
+        ? "admin"
+        : roleRaw === "customer"
+          ? "user"
+          : "user";
 
   return {
     id: String(raw.id ?? raw.sub ?? ""),

@@ -22,6 +22,7 @@ type UserSessionContextValue = {
   profile: Profile | null;
   loading: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -85,7 +86,8 @@ export function UserSessionProvider({ children }: { children: ReactNode }) {
       user,
       profile,
       loading,
-      isAdmin: user?.role === "admin",
+      isAdmin: user?.role === "admin" || user?.role === "superadmin",
+      isSuperAdmin: user?.role === "superadmin",
       refreshProfile,
       signOut,
     }),
