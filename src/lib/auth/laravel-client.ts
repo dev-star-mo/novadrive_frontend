@@ -6,6 +6,8 @@ import { getAccessToken, setAccessToken, clearAccessToken } from "@/lib/auth/tok
 import { normalizeAuthUser } from "@/lib/auth/user-normalize";
 import type { AuthUser } from "@/lib/auth/types";
 import type { AdminUser } from "@/types/admin-user";
+import type { Car } from "@/types/database";
+import type { Attachment } from "@/types/attachment";
 
 export { getAccessToken, setAccessToken, clearAccessToken } from "@/lib/auth/token-store";
 
@@ -1045,6 +1047,550 @@ export async function fetchUsersIndex(): Promise<
 
     const users = extractUsersList(data).map(normalizeAdminUser);
     return { ok: true, users };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attachments
+// ─────────────────────────────────────────────────────────────────────────────
+
+function normalizeAttachment(raw: Record<string, unknown>): Attachment {
+  return {
+    id: String(raw.id ?? ""),
+    name: raw.name != null ? String(raw.name) : null,
+    file_name: raw.file_name != null ? String(raw.file_name) : null,
+    mime_type: raw.mime_type != null ? String(raw.mime_type) : null,
+    url: String(raw.url ?? raw.original_image_url ?? raw.thumbnail_url ?? ""),
+    thumbnail_url: raw.thumbnail_url != null ? String(raw.thumbnail_url) : null,
+    original_image_url: raw.original_image_url != null ? String(raw.original_image_url) : null,
+    size: raw.size != null ? Number(raw.size) : null,
+    attachable_type: raw.attachable_type != null ? String(raw.attachable_type) : null,
+    attachable_id: raw.attachable_id != null ? String(raw.attachable_id) : null,
+    created_at: String(raw.created_at ?? ""),
+  };
+}
+
+function extractAttachmentsList(data: Record<string, unknown>): Record<string, unknown>[] {
+  if (Array.isArray(data)) return data as Record<string, unknown>[];
+  if (Array.isArray(data.data)) return data.data as Record<string, unknown>[];
+  if (data.data && typeof data.data === "object") {
+    const nested = data.data as Record<string, unknown>;
+    if (Array.isArray(nested.data)) return nested.data as Record<string, unknown>[];
+  }
+  if (Array.isArray(data.attachments)) return data.attachments as Record<string, unknown>[];
+  return [];
+}
+
+export type CreateAttachmentPayload = {
+  file: File;
+  attachable_type?: string;  // e.g. "App\Models\Vehicle"
+  attachable_id?: string | number;
+  name?: string;
+};
+
+/**
+ * Upload an attachment (`POST /attachments`).
+ * Sends multipart/form-data — Bearer token attached, no Content-Type override
+ * (browser sets it automatically with the correct boundary).
+ */
+export async function createAttachment(
+  payload: CreateAttachmentPayload
+): Promise<{ ok: true; attachment: Attachment } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  const token = getAccessToken();
+
+  const fd = new FormData();
+  fd.append("file", payload.file);
+  if (payload.attachable_type) fd.append("attachable_type", payload.attachable_type);
+  if (payload.attachable_id != null) fd.append("attachable_id", String(payload.attachable_id));
+  if (payload.name) fd.append("name", payload.name);
+
+  try {
+    const headers: HeadersInit = { Accept: "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(apiUrl("/attachments"), {
+      method: "POST",
+      headers,
+      body: fd,  // browser sets Content-Type: multipart/form-data with boundary
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not upload attachment.") };
+    }
+
+    const raw = extractUserRecord(data) ?? (data as Record<string, unknown>);
+    return { ok: true, attachment: normalizeAttachment(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/**
+ * Fetch a single attachment (`GET /attachments/:id`).
+ * Public endpoint — no Authorization header required.
+ */
+export async function fetchAttachment(
+  id: string
+): Promise<{ ok: true; attachment: Attachment } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await jsonFetch(`/attachments/${id}`, { method: "GET" });
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data, "Could not load attachment."),
+      };
+    }
+
+    const raw = extractUserRecord(data) ?? (data as Record<string, unknown>);
+    return { ok: true, attachment: normalizeAttachment(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/**
+ * Delete an attachment (`DELETE /attachments/:id`).
+ * No body. Bearer token sent when available (admin fleet always has one).
+ */
+export async function deleteAttachment(
+  id: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  const token = getAccessToken();
+  const headers = new Headers({ Accept: "application/json" });
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  try {
+    const res = await fetch(apiUrl(`/attachments/${id}`), {
+      method: "DELETE",
+      headers,
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    if (res.status === 204 || res.ok) {
+      return { ok: true };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+    return { ok: false, error: parseLaravelErrorBody(data, "Could not delete attachment.") };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/**
+ * List all attachments (`GET /attachments`).
+ * Public endpoint — no Authorization header required.
+ */
+export async function fetchAttachmentsIndex(): Promise<
+  { ok: true; attachments: Attachment[] } | { ok: false; error: string }
+> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await jsonFetch("/attachments", { method: "GET" });
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data as LaravelErrorBody, "Could not load attachments."),
+      };
+    }
+
+    const attachments = extractAttachmentsList(data).map(normalizeAttachment);
+    return { ok: true, attachments };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vehicles
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function normalizeVehicle(raw: Record<string, unknown>): Car {
+  // featured_image object → image_url
+  let imageUrl: string | null = null;
+  if (raw.image_url != null) {
+    imageUrl = String(raw.image_url);
+  } else if (raw.featured_image && typeof raw.featured_image === "object") {
+    const fi = raw.featured_image as Record<string, unknown>;
+    imageUrl = String(fi.thumbnail_url ?? fi.original_image_url ?? "");
+  }
+
+  // gallery array → images
+  let images: string[] | null = null;
+  if (Array.isArray(raw.images)) {
+    images = raw.images as string[];
+  } else if (Array.isArray(raw.gallery)) {
+    images = (raw.gallery as Record<string, unknown>[]).map(
+      (g) => String(g.thumbnail_url ?? g.original_image_url ?? g)
+    );
+  }
+
+  return {
+    id: String(raw.id ?? ""),
+    make: String(raw.make ?? ""),
+    model: String(raw.model ?? ""),
+    year: Number(raw.year ?? 0),
+    slug: raw.slug != null ? String(raw.slug) : null,
+    category: (raw.category as Car["category"]) ?? null,
+    // API uses daily_rate_per_day / weekly_rate_per_day / monthly_rate_per_day
+    price_per_day: Number(raw.price_per_day ?? raw.daily_rate_per_day ?? raw.daily_rate ?? 0),
+    price_per_week: raw.price_per_week != null
+      ? Number(raw.price_per_week)
+      : raw.weekly_rate_per_day != null
+        ? Number(raw.weekly_rate_per_day)
+        : null,
+    price_per_month: raw.price_per_month != null
+      ? Number(raw.price_per_month)
+      : raw.monthly_rate_per_day != null
+        ? Number(raw.monthly_rate_per_day)
+        : null,
+    location: String(raw.location ?? ""),
+    image_url: imageUrl,
+    images,
+    description: raw.description != null ? String(raw.description) : null,
+    features: Array.isArray(raw.features) ? (raw.features as string[]) : null,
+    available: Boolean(raw.available ?? raw.is_available ?? true),
+    seats: Number(raw.seats ?? 0),
+    transmission: String(raw.transmission ?? ""),
+    fuel_type: String(raw.fuel_type ?? ""),
+    // API uses "units" for stock count
+    units_available: Number(raw.units_available ?? raw.units ?? raw.quantity ?? 1),
+    created_at: String(raw.created_at ?? ""),
+  };
+}
+
+function extractVehiclesList(data: Record<string, unknown>): Record<string, unknown>[] {
+  if (Array.isArray(data)) return data as Record<string, unknown>[];
+  if (Array.isArray(data.data)) return data.data as Record<string, unknown>[];
+  if (data.data && typeof data.data === "object") {
+    const nested = data.data as Record<string, unknown>;
+    if (Array.isArray(nested.data)) return nested.data as Record<string, unknown>[];
+  }
+  if (Array.isArray(data.vehicles)) return data.vehicles as Record<string, unknown>[];
+  return [];
+}
+
+export type VehicleFeaturedImage = {
+  id?: number | null;
+  thumbnail_url: string;
+  original_image_url?: string;
+};
+
+export type CreateVehiclePayload = {
+  name: string;
+  slug: string;
+  make: string;
+  model: string;
+  category: string;
+  transmission: string;
+  fuel_type: string;
+  seats: number;
+  engine?: number | null;
+  max_speed?: number | null;
+  location: string;
+  insurance?: string | null;
+  keyless_entry?: boolean;
+  gps?: boolean;
+  rear_camera?: boolean;
+  description?: string | null;
+  daily_rate_per_day: number;
+  weekly_rate_per_day?: number | null;
+  monthly_rate_per_day?: number | null;
+  featured_image?: VehicleFeaturedImage | null;
+  gallery?: VehicleFeaturedImage[];
+  units: number;
+  available?: boolean;
+  is_active?: boolean;
+};
+
+/** Create a vehicle (`POST /vehicles`, Bearer token). */
+export async function createVehicle(
+  payload: CreateVehiclePayload
+): Promise<{ ok: true; vehicle: Car } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch("/vehicles", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not create vehicle.") };
+    }
+
+    const raw = extractUserRecord(data) ?? (data as Record<string, unknown>);
+    return { ok: true, vehicle: normalizeVehicle(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** All fields are optional — send only what changed. */
+export type UpdateVehiclePayload = Partial<CreateVehiclePayload>;
+
+/** Update a vehicle (`PUT /vehicles/:id`, Bearer token). */
+export async function updateVehicle(
+  id: string,
+  payload: UpdateVehiclePayload
+): Promise<{ ok: true; vehicle: Car } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/vehicles/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not update vehicle.") };
+    }
+
+    const raw = extractUserRecord(data) ?? (data as Record<string, unknown>);
+    return { ok: true, vehicle: normalizeVehicle(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** Activate a vehicle (`PATCH /admin/vehicles/:id/activate`, Bearer token). */
+export async function activateVehicle(
+  id: string
+): Promise<{ ok: true; vehicle: Car } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/admin/vehicles/${id}/activate`, { method: "PATCH" });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not activate vehicle.") };
+    }
+
+    const raw = extractUserRecord(data) ?? (data as Record<string, unknown>);
+    return { ok: true, vehicle: normalizeVehicle(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** Deactivate a vehicle (`PATCH /admin/vehicles/:id/deactivate`, Bearer token). */
+export async function deactivateVehicle(
+  id: string
+): Promise<{ ok: true; vehicle: Car } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/admin/vehicles/${id}/deactivate`, { method: "PATCH" });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not deactivate vehicle.") };
+    }
+
+    const raw = extractUserRecord(data) ?? (data as Record<string, unknown>);
+    return { ok: true, vehicle: normalizeVehicle(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** Delete a vehicle (`DELETE /vehicles/:id`, Bearer token). */
+export async function deleteVehicle(
+  id: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/vehicles/${id}`, { method: "DELETE" });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    // 204 No Content — success with no body
+    if (res.status === 204 || res.ok) {
+      return { ok: true };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody;
+    return { ok: false, error: parseLaravelErrorBody(data, "Could not delete vehicle.") };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** Fetch a single vehicle (`GET /vehicles/:id`, Bearer token). */
+export async function fetchVehicle(
+  id: string
+): Promise<{ ok: true; vehicle: Car } | { ok: false; error: string }> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch(`/vehicles/${id}`, { method: "GET" });
+    const data = (await res.json().catch(() => ({}))) as LaravelErrorBody &
+      Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return { ok: false, error: parseLaravelErrorBody(data, "Unauthorized.") };
+    }
+
+    if (!res.ok) {
+      return { ok: false, error: parseLaravelErrorBody(data, "Could not load vehicle.") };
+    }
+
+    const raw = extractUserRecord(data) ?? (data as Record<string, unknown>);
+    return { ok: true, vehicle: normalizeVehicle(raw) };
+  } catch {
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+}
+
+/** List vehicles (`GET /vehicles`, Bearer token). */
+export async function fetchVehiclesIndex(): Promise<
+  { ok: true; vehicles: Car[] } | { ok: false; error: string }
+> {
+  if (!LARAVEL_API_BASE) {
+    return {
+      ok: false,
+      error: "API URL is not configured. Set NEXT_PUBLIC_LARAVEL_API_URL.",
+    };
+  }
+
+  try {
+    const res = await authJsonFetch("/vehicles", { method: "GET" });
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (res.status === 401 || res.status === 403) {
+      clearAccessToken();
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data as LaravelErrorBody, "Could not load vehicles."),
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: parseLaravelErrorBody(data as LaravelErrorBody, "Could not load vehicles."),
+      };
+    }
+
+    const vehicles = extractVehiclesList(data).map(normalizeVehicle);
+    return { ok: true, vehicles };
   } catch {
     return { ok: false, error: "Something went wrong. Please try again." };
   }

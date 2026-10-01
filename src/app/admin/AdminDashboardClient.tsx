@@ -72,8 +72,8 @@ export default function AdminDashboardClient({ bookings, cars: initialCars, leas
 
   const pendingLeases = leaseRequests.filter(r => r.status === "new").length;
 
-  const handleCarAdded = (newCar: Record<string, unknown>) => {
-    setCars((prev) => [...prev, newCar as Car]);
+  const handleCarAdded = (newCar: Car) => {
+    setCars((prev) => [...prev, newCar]);
   };
 
   return (
