@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 export function CheckoutSuccessClient({ reference }: { reference: string }) {
@@ -56,7 +56,7 @@ export function CheckoutSuccessClient({ reference }: { reference: string }) {
       <h1 className="font-display text-2xl font-bold text-ink">Payment status</h1>
       <p className={`mt-3 ${tone}`}>{message}</p>
       <Link
-        href="/my-bookings"
+        to="/my-bookings"
         className="mt-8 inline-block rounded-full bg-brand-600 px-6 py-3 text-sm font-semibold text-white"
       >
         My bookings

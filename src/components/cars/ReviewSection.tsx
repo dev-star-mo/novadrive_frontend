@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Star, MessageSquare, Quote, User as UserIcon, CheckCircle2, ChevronRight } from "lucide-react";
-import type { Review, Booking } from "@/types/database";
+import type { Review } from "@/types/database";
 import { useUserSession } from "@/components/providers/user-session-provider";
-import { createClient } from "@/lib/supabase/client";
 
 type Props = { carId: string };
 
 export function ReviewSection({ carId }: Props) {
-  const { user, profile } = useUserSession();
+  const { user } = useUserSession();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [canReview, setCanReview] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -18,53 +17,18 @@ export function ReviewSection({ carId }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createClient();
-
   useEffect(() => {
-    const fetchReviews = async () => {
-      const { data } = await supabase
-        .from("reviews")
-        .select("*")
-        .eq("car_id", carId)
-        .order("created_at", { ascending: false });
-      if (data) setReviews(data as Review[]);
-
-      if (user) {
-        // Check if user has a paid and finished booking
-        const { data: bookings } = await supabase
-          .from("bookings")
-          .select("*")
-          .eq("user_id", user.id)
-          .eq("car_id", carId)
-          .eq("status", "paid");
-
-        const finished = (bookings as Booking[] ?? []).some(b => new Date(b.return_at) < new Date());
-        setCanReview(finished);
-      }
-      setLoading(false);
-    };
-    void fetchReviews();
-  }, [carId, user, supabase]);
+    setReviews([]);
+    setCanReview(false);
+    setLoading(false);
+  }, [carId, user]);
 
   const submitReview = async () => {
     if (!comment.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const { data, error: err } = await supabase.from("reviews").insert({
-        user_id: user?.id,
-        car_id: carId,
-        rating,
-        comment,
-        user_name: profile?.full_name || user?.email || "Anonymous",
-      }).select().single();
-
-      if (err) throw err;
-      setReviews([data as Review, ...reviews]);
-      setComment("");
-      setCanReview(false);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to submit review");
+      setError("Reviews are not connected to the API yet.");
     } finally {
       setBusy(false);
     }

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { useUserSession } from "@/components/providers/user-session-provider";
 
 export function UserMenu() {
   const { user, profile, isAdmin, signOut } = useUserSession();
   const [open, setOpen] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,7 +40,7 @@ export function UserMenu() {
           </div>
           {isAdmin && (
             <Link
-              href="/admin"
+              to="/admin"
               className="block px-3 py-2 text-sm text-amber-800 hover:bg-amber-50"
               onClick={() => setOpen(false)}
             >
@@ -47,29 +48,45 @@ export function UserMenu() {
             </Link>
           )}
           <Link
-            href="/my-bookings"
+            to="/my-bookings"
             className="block px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
             onClick={() => setOpen(false)}
           >
             My bookings
           </Link>
           <Link
-            href="/my-leases"
+            to="/my-leases"
             className="block px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
             onClick={() => setOpen(false)}
           >
             My lease requests
           </Link>
+          <Link
+            to="/auth/update-password"
+            className="block px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            onClick={() => setOpen(false)}
+          >
+            Change password
+          </Link>
           <button
             type="button"
             className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
             onClick={() => {
-              setOpen(false);
-              void signOut();
+              void (async () => {
+                const result = await signOut();
+                if (!result.ok) {
+                  setSignOutError(result.error);
+                  return;
+                }
+                setOpen(false);
+              })();
             }}
           >
             Sign out
           </button>
+          {signOutError ? (
+            <p className="px-3 py-2 text-xs text-red-600">{signOutError}</p>
+          ) : null}
         </div>
       )}
     </div>

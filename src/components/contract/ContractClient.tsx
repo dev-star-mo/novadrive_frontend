@@ -1,9 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { Link } from "react-router-dom";
 import type { Car } from "@/types/database";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -56,11 +54,6 @@ export function ContractClient({
   booking: BookingRow;
   car: Car | null;
 }) {
-  const router = useRouter();
-
-  // Stable Supabase browser client — created once to avoid re-initialising on every render
-  const supabase = useRef(createClient()).current;
-
   // ── Text / field state ────────────────────────────────────────────────────
 
   // Renter's national ID or passport number (required for the agreement)
@@ -100,7 +93,7 @@ export function ContractClient({
   const existingBack = booking.id_back_url;
 
   // Shows "Uploading documents…" text on the proceed button while uploading
-  const [uploading, setUploading] = useState(false);
+  const [uploading] = useState(false);
 
   // Error / validation message shown at the bottom of the form
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
@@ -146,26 +139,8 @@ export function ContractClient({
     return URL.createObjectURL(file);
   }
 
-  // Upload a single file to the "contract-docs" Supabase Storage bucket
-  // Path: contract-docs/<booking_id>/<slot>.<extension>
-  async function uploadDoc(file: File, slot: string): Promise<string> {
-    const ext = file.name.split(".").pop() ?? "jpg";
-    const path = `${booking.id}/${slot}.${ext}`;
-    const { error } = await supabase.storage
-      .from("contract-docs")
-      .upload(path, file, {
-        upsert: true,
-        contentType: file.type || "image/jpeg"
-      });
-    if (error) throw new Error(`Upload failed for ${slot}: ${error.message}`);
-    // Return the public URL for future reference (admin can view docs)
-    const { data } = supabase.storage.from("contract-docs").getPublicUrl(path);
-    return data.publicUrl;
-  }
-
   // ── Submit handler ────────────────────────────────────────────────────────
 
-  // Validates the form, concurrently uploads all 3 documents, then redirects to checkout
   const handleProceed = async () => {
     if (!canProceed) {
       setValidationMsg(
@@ -174,42 +149,7 @@ export function ContractClient({
       );
       return;
     }
-    setValidationMsg(null);
-    setUploading(true);
-    try {
-      // Upload all three document images concurrently to Supabase Storage
-      const [pUrl, fUrl, bUrl] = await Promise.all([
-        profilePhoto ? uploadDoc(profilePhoto, "profile-photo") : Promise.resolve(existingProfile!),
-        docFront ? uploadDoc(docFront, "document-front") : Promise.resolve(existingFront!),
-        docBack ? uploadDoc(docBack, "document-back") : Promise.resolve(existingBack!),
-      ]);
-
-      // Save renter details and document URLs to the database
-      const { error: updateError } = await supabase
-        .from("bookings")
-        .update({
-          id_number: idNumber,
-          emergency_contact_name: emergencyName,
-          emergency_contact_phone: emergencyPhone,
-          //signature_name: signature,
-          profile_photo_url: pUrl,
-          id_front_url: fUrl,
-          id_back_url: bUrl,
-        })
-        .eq("id", booking.id);
-
-      if (updateError) throw updateError;
-
-      // All data saved — proceed to the existing Paystack checkout page
-      router.push(`/checkout?booking=${encodeURIComponent(booking.id)}`);
-    } catch (err) {
-      console.error("Submission error:", err);
-      // If any upload or update fails, surface the error and abort navigation
-      setValidationMsg(
-        err instanceof Error ? err.message : "Submission failed. Please try again."
-      );
-      setUploading(false);
-    }
+    setValidationMsg("Saving contract details is not connected to the API yet.");
   };
 
   // ── BoldSign embedded signing ────────────────────────────────────────────
@@ -772,7 +712,7 @@ export function ContractClient({
 
           {/* Back navigation link */}
           <Link
-            href="/my-bookings"
+            to="/my-bookings"
             className="block text-center text-sm text-brand-600 hover:underline"
           >
             ← Back to my bookings
@@ -827,7 +767,7 @@ function DocUploadSlot({
       >
         {preview ? (
           /* Show selected image as a thumbnail */
-          // eslint-disable-next-line @next/next/no-img-element
+          // img is a static preview of an uploaded file in the browser.
           <img
             src={preview}
             alt={label}

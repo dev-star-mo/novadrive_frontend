@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import {
   Star,
   Edit3,
@@ -583,7 +583,7 @@ export function MyBookingsClient({
                   )}
                   {b.status !== "paid" && (
                     <Link
-                      href={`/contract?booking=${b.id}`}
+                      to={`/contract?booking=${b.id}`}
                       className="inline-flex items-center gap-2 rounded-2xl bg-onyx-950 px-6 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-xl transition-all hover:bg-black hover:-translate-y-1"
                     >
                       Process Payment <ChevronRight className="h-3.5 w-3.5" />
@@ -591,7 +591,7 @@ export function MyBookingsClient({
                   )}
                 </div>
 
-                <Link href={`/my-bookings/${b.id}`} className="text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-brand-600 transition-colors">
+                <Link to={`/my-bookings/${b.id}`} className="text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-brand-600 transition-colors">
                   View full summary
                 </Link>
               </div>
@@ -606,7 +606,7 @@ export function MyBookingsClient({
             </div>
             <h3 className="font-display text-2xl font-bold text-onyx-950 tracking-tight">No Reservatons Yet</h3>
             <p className="mt-2 text-slate-500 font-medium">Your premium automotive journey starts here.</p>
-            <Link href="/cars" className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-brand-600 px-8 py-4 text-xs font-bold uppercase tracking-[0.2em] text-white shadow-2xl hover:bg-brand-700 transition-all hover:-translate-y-1">
+            <Link to="/cars" className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-brand-600 px-8 py-4 text-xs font-bold uppercase tracking-[0.2em] text-white shadow-2xl hover:bg-brand-700 transition-all hover:-translate-y-1">
               Explore The Fleet <ChevronRight className="h-4 w-4" />
             </Link>
           </div>

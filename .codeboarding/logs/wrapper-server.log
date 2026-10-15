@@ -1,0 +1,38 @@
+[stderr] INFO:     Started server process [1282450]
+[stderr] INFO:     Waiting for application startup.
+[stderr] INFO:     Application startup complete.
+[stderr] INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)
+INFO:     127.0.0.1:59350 - "GET /health HTTP/1.1" 200 OK
+[stderr] INFO:     ('127.0.0.1', 59352) - "WebSocket /ws" [accepted]
+[stderr] 2026-10-15 23:59:50 INFO     [codeboarding_pro.ws.server:258] WebSocket connected: session 7548d8dc-de3d-4f61-830c-2a2646e8eb2d
+[stderr] INFO:     connection open
+[stderr] 2026-10-15 23:59:51 INFO     [tool_registry.manifest:320] has_required_tools: csharp missing or stale at /home/r0b0t/.codeboarding/servers/bin/linux/pm-tools/csharp-ls/csharp-ls
+[stderr] 2026-10-15 23:59:51 INFO     [tool_registry.manifest:320] has_required_tools: csharp missing or stale at /home/r0b0t/.codeboarding/servers/bin/linux/pm-tools/csharp-ls/csharp-ls
+[stderr] 2026-10-15 23:59:51 INFO     [tool_registry.installers:451] Installing Node.js packages: ['pyright@1.1.400', 'typescript-language-server@4.3.4', 'typescript@5.7', 'intelephense@1.16.5']
+[stderr] 2026-10-15 23:59:59 INFO     [tool_registry.installers:465] Node.js packages installed successfully
+[stderr] 2026-10-15 23:59:59 INFO     [tool_registry.installers:225]   tokei: already installed, skipping
+[stderr] 2026-10-15 23:59:59 INFO     [tool_registry.installers:225]   gopls: already installed, skipping
+[stderr] 2026-10-15 23:59:59 INFO     [tool_registry.installers:225]   rust-analyzer: already installed, skipping
+[stderr] 2026-10-15 23:59:59 INFO     [tool_registry.installers:489] java already installed
+[stderr] 2026-10-16 00:00:12 WARNING  [tool_registry.installers:397]   csharp-ls: dotnet install failed (exit 1):  be restored.
+[stderr] Tool 'csharp-ls' failed to install. This failure may have been caused by:
+[stderr] 
+[stderr] * You are attempting to install a preview release and did not use the --version option to specify the version.
+[stderr] * A package by this name was found, but it was not a .NET tool.
+[stderr] * The required NuGet feed cannot be accessed, perhaps because of an Internet connection problem.
+[stderr] * You mistyped the name of the tool.
+[stderr] 
+[stderr] For more reasons, including package naming enforcement, visit https://aka.ms/failure-installing-tool
+[stderr] 
+[stderr] 2026-10-16 00:00:12 INFO     [static_analyzer.java_utils:125] Found Java 25 at /usr/lib/jvm/java-25-openjdk-amd64
+[stderr] 2026-10-16 00:00:12 INFO     [codeboarding_pro.lsp.bootstrap:56] LSP startup attempt 1/3
+[stderr] 2026-10-16 00:00:12 INFO     [codeboarding_pro.session:183] Session 7548d8dc-de3d-4f61-830c-2a2646e8eb2d initialized: repo=/home/r0b0t/Videos/Dev/Nova, project=Nova, output=/home/r0b0t/Videos/Dev/Nova/.codeboarding
+[stderr] 2026-10-16 00:00:13 INFO     [static_analyzer.typescript_config_scanner:96] Found 1 TypeScript project(s) in repository (75 total files across all projects)
+[stderr] 2026-10-16 00:00:13 INFO     [static_analyzer:198] Creating engine config for TypeScript at repo root (75 files across 1 tsconfig project(s): .)
+[stderr] 2026-10-16 00:00:18 INFO     [static_analyzer:208] Adding 1 family file(s) claimed by no tsconfig
+[stderr] 2026-10-16 00:00:18 INFO     [static_analyzer:450] Starting engine LSP client for TypeScript at /home/r0b0t/Videos/Dev/Nova
+[stderr] 2026-10-16 00:00:19 INFO     [static_analyzer:472] TypeScript LSP start: 0.4s
+[stderr] 2026-10-16 00:00:19 INFO     [codeboarding_pro.file_monitor:106] FileMonitor started for /home/r0b0t/Videos/Dev/Nova
+[stderr] 2026-10-16 00:00:19 INFO     [codeboarding_pro.session:202] Session 7548d8dc-de3d-4f61-830c-2a2646e8eb2d: FileMonitor activated
+[stderr] 2026-10-16 00:00:19 INFO     [codeboarding_pro.session:243] Session 7548d8dc-de3d-4f61-830c-2a2646e8eb2d: LSP wiring complete
+[stderr] 2026-10-16 00:00:19 INFO     [codeboarding_pro.lsp.bootstrap:67] LSP clients started successfully (attempt 1)

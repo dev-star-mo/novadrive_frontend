@@ -1,7 +1,5 @@
-export const dynamic = "force-dynamic";
-import { redirect } from "next/navigation";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { Link } from "react-router-dom";
+import type { LeaseRequest } from "@/types/database";
 
 const STATUS_CONFIG = {
   new:       { label: "Pending Review", cls: "bg-amber-100 text-amber-800" },
@@ -11,20 +9,8 @@ const STATUS_CONFIG = {
   rejected:  { label: "Not Accepted",   cls: "bg-red-100 text-red-800" },
 } as const;
 
-export default async function MyLeasesPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-
-  const { data: leases, error } = await supabase
-    .from("lease_requests")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("My leases error:", error);
-  }
+export default function MyLeasesPage() {
+  const leases: LeaseRequest[] = [];
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
@@ -34,7 +20,7 @@ export default async function MyLeasesPage() {
           <p className="mt-1 text-slate-500">Track the status of your vehicle lease submissions.</p>
         </div>
         <Link
-          href="/lease"
+          to="/lease"
           className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
         >
           + Submit new
@@ -44,7 +30,7 @@ export default async function MyLeasesPage() {
       {(!leases || leases.length === 0) ? (
         <div className="mt-16 text-center">
           <p className="text-slate-500">You haven&apos;t submitted any lease requests yet.</p>
-          <Link href="/lease" className="mt-4 inline-block text-sm font-semibold text-brand-600 hover:underline">
+          <Link to="/lease" className="mt-4 inline-block text-sm font-semibold text-brand-600 hover:underline">
             Lease your car with NovaDrive →
           </Link>
         </div>

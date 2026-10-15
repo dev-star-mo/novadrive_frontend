@@ -1,7 +1,7 @@
 export type Profile = {
   id: string;
   full_name: string | null;
-  role: "user" | "admin";
+  role: "user" | "admin" | "superadmin";
   created_at: string;
   updated_at: string;
 };

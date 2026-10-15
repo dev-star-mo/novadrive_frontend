@@ -1,16 +1,11 @@
-import React from "react";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { useSearchParams } from "react-router-dom";
 
-export default async function SentPage({ searchParams }: { searchParams: Promise<{ booking?: string }> }) {
-  const resolvedSearchParams = await searchParams;
-  const bookingId = resolvedSearchParams.booking;
-  const admin = createAdminClient();
-
-  let booking: any = null;
-  if (bookingId) {
-    const { data } = await admin.from("bookings").select("id,full_name,email").eq("id", bookingId).single();
-    booking = data;
-  }
+export default function SentPage() {
+  const [params] = useSearchParams();
+  const bookingId = params.get("booking");
+  const booking = bookingId
+    ? { id: bookingId, email: null as string | null }
+    : null;
 
   return (
     <main className="mx-auto max-w-xl px-4 py-20">
@@ -28,9 +23,11 @@ export default async function SentPage({ searchParams }: { searchParams: Promise
             <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
               <p className="text-sm text-slate-500 text-center mb-1">Booking Reference</p>
               <p className="text-center font-mono font-medium text-ink">{booking.id}</p>
-              <p className="text-center text-sm text-slate-500 mt-2">
-                Sent to: <span className="font-medium text-ink">{booking.email}</span>
-              </p>
+              {booking.email ? (
+                <p className="text-center text-sm text-slate-500 mt-2">
+                  Sent to: <span className="font-medium text-ink">{booking.email}</span>
+                </p>
+              ) : null}
             </div>
 
             <div className="mt-8 bg-slate-50 rounded-xl p-6 text-left border border-slate-100">
@@ -67,7 +64,7 @@ export default async function SentPage({ searchParams }: { searchParams: Promise
               </ul>
             </div>
 
-            <a href={`mailto:${process.env.SUPPORT_EMAIL ?? "support@company.com"}`} className="mt-6 block text-center text-sm font-medium text-brand-600 hover:underline">Contact support</a>
+            <a href={`mailto:${import.meta.env.VITE_SUPPORT_EMAIL ?? "support@company.com"}`} className="mt-6 block text-center text-sm font-medium text-brand-600 hover:underline">Contact support</a>
           </div>
         )}
       </div>

@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle, AlertCircle, X } from "lucide-react";
 
 type BannerState = "verified" | "link_expired" | null;
 
 export function VerifiedBanner() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [state, setState] = useState<BannerState>(null);
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export function VerifiedBanner() {
     }
 
     if (changed) {
-      router.replace(url.pathname + (url.search || ""), { scroll: false });
+      navigate(url.pathname + (url.search || ""), { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

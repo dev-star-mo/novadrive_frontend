@@ -3,39 +3,35 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
     "postinstall": "node node_modules/typescript/lib/tsc.js -p node_modules/boldsign/tsconfig.json"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.5.2",
-    "@supabase/supabase-js": "^2.49.1",
     "@types/leaflet": "^1.9.22",
     "boldsign": "^3.3.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.40.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.17.0",
-    "next": "^16.2.4",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.9.4"
   },
   "overrides": {
     "postcss": "^8.5.10"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
-    "@netlify/functions": "^5.2.2",
-    "@netlify/plugin-nextjs": "^5.15.11",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^5.0.4",
     "eslint": "^9.18.0",
-    "eslint-config-next": "^15.2.4",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^7.1.9"
   }
 }

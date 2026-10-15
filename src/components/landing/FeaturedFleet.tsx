@@ -1,30 +1,24 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
+import { Image } from "@/components/ui/Image";
+import { Link } from "react-router-dom";
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Fuel, Gauge, Users, Zap } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { useUserSession } from "@/components/providers/user-session-provider";
 import { useAppUI } from "@/components/providers/app-ui-provider";
+import { fetchVehiclesIndex } from "@/lib/auth/laravel-client";
 import type { Car } from "@/types/database";
 
 export function FeaturedFleet() {
   const [cars, setCars] = useState<Car[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [idx, setIdx] = useState(0);
   const [direction, setDirection] = useState(0);
   const [detail, setDetail] = useState<Car | null>(null);
   const { user } = useUserSession();
   const { openAuth, openBooking } = useAppUI();
-  const supabase = createClient();
-
-  useEffect(() => {
-    void (async () => {
-      const { data } = await supabase.from("cars").select("*").eq("available", true).limit(6);
-      setCars((data as Car[]) ?? []);
-    })();
-  }, [supabase]);
 
   const n = cars.length;
 
@@ -35,6 +29,23 @@ export function FeaturedFleet() {
 
   const prev = () => paginate(-1);
   const next = () => paginate(1);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchVehiclesIndex().then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        setLoadError(result.error);
+        setCars([]);
+      } else {
+        setCars(result.vehicles);
+      }
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (n <= 1) return;
@@ -57,9 +68,11 @@ export function FeaturedFleet() {
       <section id="fleet" className="py-24 bg-white">
         <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
           <h2 className="text-onyx-900">Featured Vehicles</h2>
-          <p className="mt-4 text-muted">Fleet data will appear once your Supabase project is seeded.</p>
+          <p className="mt-4 text-muted">
+            {loading ? "Loading vehicles…" : loadError ?? "No featured vehicles yet."}
+          </p>
           <Link
-            href="/cars"
+            to="/cars"
             className="mt-8 inline-block rounded-full bg-brand-600 px-8 py-4 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
             Browse All Cars
@@ -245,7 +258,7 @@ export function FeaturedFleet() {
 
         <div className="mt-16 flex justify-center">
           <Link
-            href="/cars"
+            to="/cars"
             className="group flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-onyx-900 transition-colors hover:text-brand-600"
           >
             Explore Complete Fleet

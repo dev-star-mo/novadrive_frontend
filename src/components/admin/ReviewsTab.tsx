@@ -16,27 +16,19 @@ import {
   Maximize2
 } from "lucide-react";
 import type { Review } from "@/types/database";
-import { createClient } from "@/lib/supabase/client";
 
 type Props = { initialReviews: Review[] };
 
 export function ReviewsTab({ initialReviews }: Props) {
-  const [reviews, setReviews] = useState<Review[]>(initialReviews);
+  const [reviews] = useState<Review[]>(initialReviews);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Review | null>(null);
-
-  const supabase = createClient();
 
   const deleteReview = async (id: string) => {
     if (!confirm("Confirm testimonial removal? This action is permanent.")) return;
     setBusyId(id);
     try {
-      const { error } = await supabase.from("reviews").delete().eq("id", id);
-      if (error) throw error;
-      setReviews((prev) => prev.filter((r) => r.id !== id));
-      if (selected?.id === id) setSelected(null);
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to delete");
+      alert("Review deletion is not connected to the API yet.");
     } finally {
       setBusyId(null);
     }

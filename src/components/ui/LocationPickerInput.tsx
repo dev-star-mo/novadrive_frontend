@@ -1,19 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import dynamic from "next/dynamic";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { MapPin, Search, Loader2, Map as MapIcon, ChevronDown, Check, X } from "lucide-react";
 
-const LocationMap = dynamic(
-  () => import("./LocationMap").then((mod) => mod.LocationMap),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="w-full h-44 rounded-2xl bg-slate-100 animate-pulse flex items-center justify-center text-xs text-slate-400 font-bold uppercase tracking-wider mt-2">
-        Loading Map View...
-      </div>
-    ),
-  }
+const LocationMap = lazy(() =>
+  import("./LocationMap").then((mod) => ({ default: mod.LocationMap })),
 );
 
 interface PlaceResult {
@@ -266,7 +257,15 @@ export function LocationPickerInput({
       {/* Interactive Leaflet Map */}
       {showMap && (
         <div className="animate-in fade-in duration-300">
-          <LocationMap lat={coords.lat} lon={coords.lon} onMapClick={handleMapClick} />
+          <Suspense
+            fallback={
+              <div className="w-full h-44 rounded-2xl bg-slate-100 animate-pulse flex items-center justify-center text-xs text-slate-400 font-bold uppercase tracking-wider mt-2">
+                Loading Map View...
+              </div>
+            }
+          >
+            <LocationMap lat={coords.lat} lon={coords.lon} onMapClick={handleMapClick} />
+          </Suspense>
           <p className="text-[9px] text-slate-400 font-medium italic mt-1 text-right">
             💡 Click or drag marker on map to set precise pickup/dropoff location
           </p>

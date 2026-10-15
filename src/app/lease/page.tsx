@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
+import { useEffect, useState } from "react";
+import { Image } from "@/components/ui/Image";
 import {
   Plus,
   Trash2,
@@ -16,8 +16,6 @@ import {
 } from "lucide-react";
 import { useUserSession } from "@/components/providers/user-session-provider";
 import { useAppUI } from "@/components/providers/app-ui-provider";
-import { createClient } from "@/lib/supabase/client";
-
 type LeaseCategory = {
   title: string;
   desc: string;
@@ -58,9 +56,8 @@ const categories: LeaseCategory[] = [
 ];
 
 export default function LeasePage() {
-  const { user, loading, profile } = useUserSession();
+  const { user, loading } = useUserSession();
   const { openAuth } = useAppUI();
-  const supabase = useMemo(() => createClient(), []);
 
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
@@ -69,7 +66,7 @@ export default function LeasePage() {
   const [duration, setDuration] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const [phones, setPhones] = useState<string[]>([""]);
-  const [busy, setBusy] = useState(false);
+  const [busy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -93,9 +90,6 @@ export default function LeasePage() {
       return;
     }
 
-    const y = Number(year);
-    const km = Number(mileage);
-    const dur = Number(duration);
     const validPhones = phones.filter((p) => p.trim());
 
     if (!brand.trim() || !model.trim() || !year.trim() || !mileage.trim() || !duration.trim() || photos.length === 0 || validPhones.length === 0) {
@@ -103,46 +97,7 @@ export default function LeasePage() {
       return;
     }
 
-    setBusy(true);
-    try {
-      const bucket = "car-images";
-      const image_urls: string[] = [];
-
-      for (const file of photos) {
-        const path = `lease-requests/${user.id}/${Date.now()}-${file.name}`.replace(/\s+/g, "-");
-        const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
-          cacheControl: "3600",
-          contentType: file.type || "image/jpeg",
-        });
-        if (uploadError) throw new Error(uploadError.message);
-        const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-        image_urls.push(data.publicUrl);
-      }
-
-      const res = await fetch("/api/lease", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          brand, model, year: y, mileage_km: km, lease_duration_months: dur,
-          image_urls, phone_numbers: validPhones,
-          user_full_name: profile?.full_name ?? user.email,
-          user_email: user.email,
-        }),
-      });
-
-      if (!res.ok) {
-        const json = await res.json();
-        throw new Error(json.error ?? "Submission failed");
-      }
-
-      setSuccess("Your lease request has been submitted successfully. Our team will contact you shortly.");
-      setBrand(""); setModel(""); setYear(""); setMileage(""); setDuration(""); setPhotos([]); setPhones([""]);
-      setSubmitted(false);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
+    setError("Lease submission is not connected to the API yet.");
   };
 
   return (

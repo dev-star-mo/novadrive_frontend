@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   X,
   User,
@@ -17,7 +17,6 @@ import {
   Search,
   Clock
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { useUserSession } from "@/components/providers/user-session-provider";
 import { useAppUI } from "@/components/providers/app-ui-provider";
 import { computeRentalTotal } from "@/lib/pricing";
@@ -42,13 +41,12 @@ function computeDurationDays(pickupAt: string, returnAt: string): number {
 export function BookingModal() {
   const { bookingOpen, closeBooking, preselectedCar } = useAppUI();
   const { user } = useUserSession();
-  const supabase = useRef(createClient()).current;
 
   const [cars, setCars] = useState<Car[]>([]);
   const [carId, setCarId] = useState<string>("");
   const [carQuery, setCarQuery] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [carsLoading, setCarsLoading] = useState(false);
+  const [carsLoading] = useState(false);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [pickupAt, setPickupAt] = useState("");
@@ -63,28 +61,9 @@ export function BookingModal() {
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
-    if (!bookingOpen) return;
-    void (async () => {
-      setCarsLoading(true);
-      const { data, error: fetchError } = await supabase
-        .from("cars")
-        .select("*")
-        .eq("available", true)
-        .order("make");
-      if (fetchError) {
-        setError(fetchError.message);
-        setCars([]);
-        setCarsLoading(false);
-        return;
-      }
-      setCars((data as Car[]) ?? []);
-      setCarsLoading(false);
-    })();
-  }, [bookingOpen, supabase]);
-
-  useEffect(() => {
     if (preselectedCar?.id) {
       setCarId(preselectedCar.id);
+      setCars([preselectedCar]);
       const c = preselectedCar;
       setCarQuery(`${c.make} ${c.model} (${c.year})`);
     }
@@ -125,7 +104,7 @@ export function BookingModal() {
     setSubmitted(true);
     setError(null);
     if (!user?.email) return;
-    if (!user.email_confirmed_at) {
+    if (!user.email_verified) {
       setError("Only verified accounts can make a booking. Please confirm your email first.");
       setBusy(false);
       return;

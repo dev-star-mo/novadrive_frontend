@@ -1,5 +1,5 @@
-import Link from "next/link";
-import Image from "next/image";
+import { Link } from "react-router-dom";
+import { Image } from "@/components/ui/Image";
 
 const PHONE = "+254 798 615 674";
 const EMAIL = "novadrivecarlink@gmail.com";
@@ -11,7 +11,7 @@ export function SiteFooter() {
     <footer className="border-t border-onyx-800 bg-onyx-950 text-slate-400">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 md:grid-cols-3 lg:px-8">
         <div className="space-y-6">
-          <Link href="/" className="flex items-center gap-3 text-white group">
+          <Link to="/" className="flex items-center gap-3 text-white group">
             <div className="relative h-12 w-12 overflow-hidden rounded-2xl bg-brand-600 p-2 shadow-lg transition-transform duration-300 group-hover:scale-110">
               <Image
                 src="/logo.png"
@@ -55,7 +55,7 @@ export function SiteFooter() {
               { href: "/cars", label: "Premium Fleet" },
             ].map((link) => (
               <li key={link.label}>
-                <Link href={link.href} className="hover:text-brand-600 transition-colors">
+                <Link to={link.href} className="hover:text-brand-600 transition-colors">
                   {link.label}
                 </Link>
               </li>

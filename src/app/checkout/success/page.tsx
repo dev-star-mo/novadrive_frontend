@@ -1,11 +1,9 @@
-import Link from "next/link";
+import { Link, useSearchParams } from "react-router-dom";
 import { CheckoutSuccessClient } from "@/components/checkout/CheckoutSuccessClient";
 
-type Search = { reference?: string; trxref?: string };
-
-export default async function CheckoutSuccessPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const sp = await searchParams;
-  const reference = typeof sp.reference === "string" ? sp.reference : typeof sp.trxref === "string" ? sp.trxref : "";
+export default function CheckoutSuccessPage() {
+  const [params] = useSearchParams();
+  const reference = params.get("reference") ?? params.get("trxref") ?? "";
 
   if (reference) {
     return <CheckoutSuccessClient reference={reference} />;
@@ -19,7 +17,7 @@ export default async function CheckoutSuccessPage({ searchParams }: { searchPara
         status under My bookings.
       </p>
       <Link
-        href="/my-bookings"
+        to="/my-bookings"
         className="mt-8 inline-block rounded-full bg-brand-600 px-6 py-3 text-sm font-semibold text-white"
       >
         My bookings

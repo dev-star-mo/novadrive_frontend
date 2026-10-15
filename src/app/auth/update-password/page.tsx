@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Eye, EyeOff, KeyRound, AlertCircle } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState, type FormEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Image } from "@/components/ui/Image";
+import { Link } from "react-router-dom";
+import { Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
+import { updatePassword } from "@/lib/auth/laravel-client";
+import { useUserSession } from "@/components/providers/user-session-provider";
 
 function PasswordField({
   label,
@@ -21,7 +22,6 @@ function PasswordField({
   placeholder: string;
 }) {
   const [show, setShow] = useState(false);
-
   return (
     <div className="space-y-2">
       <label className="text-[10px] font-black uppercase tracking-widest text-onyx-950">
@@ -50,171 +50,183 @@ function PasswordField({
   );
 }
 
-export default function UpdatePasswordPage() {
-  const router = useRouter();
-  const supabase = useRef(createClient()).current;
-
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [sessionReady, setSessionReady] = useState(false);
-  const [hasSession, setHasSession] = useState(false);
+function ResetTokenRedirect() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token");
 
   useEffect(() => {
-    let cancelled = false;
+    const dest = token
+      ? `/auth/reset-password?token=${encodeURIComponent(token)}`
+      : "/auth/reset-password";
+    navigate(dest, { replace: true });
+  }, [navigate, token]);
 
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!cancelled) {
-        setHasSession(!!session);
-        setSessionReady(true);
-      }
-    };
+  return (
+    <p className="text-sm font-medium text-slate-400">Redirecting…</p>
+  );
+}
 
-    void checkSession();
+function ChangePasswordForm() {
+  const navigate = useNavigate();
+  const { user, loading } = useUserSession();
+  const [oldPassword, setOldPassword] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
-        setHasSession(!!session);
-        setSessionReady(true);
-      }
-    });
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
 
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
-  }, [supabase]);
-
-  const submit = async (e?: FormEvent) => {
-    e?.preventDefault();
-    setErr(null);
-
+    if (!oldPassword) {
+      setError("Please enter your current password.");
+      return;
+    }
     if (password.length < 6) {
-      setErr("Password must be at least 6 characters.");
+      setError("New password must be at least 6 characters.");
       return;
     }
     if (password !== confirm) {
-      setErr("Passwords do not match.");
+      setError("New password and confirmation do not match.");
       return;
     }
 
     setBusy(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setErr("Your reset link has expired or is invalid. Please request a new password reset.");
-        return;
-      }
+    const result = await updatePassword({
+      old_password: oldPassword,
+      password,
+      confirm_password: confirm,
+    });
+    setBusy(false);
 
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) {
-        setErr(error.message);
-        return;
-      }
-
-      router.push("/");
-      router.refresh();
-    } catch (error) {
-      console.error("[update-password] Unexpected error:", error);
-      setErr(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong. Please try again."
-      );
-    } finally {
-      setBusy(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
     }
+
+    setOldPassword("");
+    setPassword("");
+    setConfirm("");
+    setSuccess(result.message);
   };
+
+  if (loading) {
+    return <p className="text-sm font-medium text-slate-400">Loading…</p>;
+  }
+
+  if (!user) {
+    return (
+      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-white p-8 text-center shadow-2xl shadow-black/40">
+        <p className="text-sm font-medium text-slate-600">
+          Sign in to change your password.
+        </p>
+        <Link
+          to="/auth/login"
+          className="mt-4 inline-flex rounded-2xl bg-onyx-950 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-white hover:bg-brand-600"
+        >
+          Sign in
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-md">
       <div className="mb-8 flex flex-col items-center text-center">
-        <Link href="/" className="mb-6 flex items-center gap-3 transition-opacity hover:opacity-80">
-          <Image
-            src="/logo.png"
-            alt="NovaDrive Logo"
-            width={48}
-            height={48}
-            className="rounded-xl"
-          />
+        <Link to="/" className="mb-6 flex items-center gap-3 transition-opacity hover:opacity-80">
+          <Image src="/logo.png" alt="NovaDrive Logo" width={48} height={48} className="rounded-xl" />
           <span className="font-display text-xl font-bold tracking-tight text-white">
             NovaDrive <span className="text-brand-600">Car Rentals</span>
           </span>
         </Link>
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600/10 border border-brand-600/20">
-          <KeyRound className="h-7 w-7 text-brand-600" />
-        </div>
         <h1 className="font-display text-2xl font-black uppercase tracking-tight text-white">
-          Set New Password
+          Change password
         </h1>
-        <p className="mt-3 max-w-sm text-sm font-medium leading-relaxed text-slate-400">
-          Choose a secure password for your NovaDrive account. You&apos;ll be redirected home once it&apos;s saved.
+        <p className="mt-2 text-sm font-medium text-slate-400">
+          Signed in as {user.email}
         </p>
       </div>
 
       <div className="rounded-[2rem] border border-white/10 bg-white p-8 shadow-2xl shadow-black/40">
-        {!sessionReady ? (
-          <p className="text-center text-sm text-slate-500">Verifying your reset link…</p>
-        ) : !hasSession ? (
-          <div className="space-y-4 text-center">
-            <div className="flex justify-center">
-              <AlertCircle className="h-8 w-8 text-red-500" />
-            </div>
-            <p className="text-sm font-medium text-slate-600">
-              Your reset link has expired or is invalid. Request a new link from the sign-in page.
+        {success ? (
+          <div className="flex flex-col items-center gap-3 text-center">
+            <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+            <p className="text-sm font-semibold text-slate-800">Password updated</p>
+            <p className="text-xs text-slate-500">
+              {success}
             </p>
-            <Link
-              href="/"
-              className="inline-block rounded-2xl bg-onyx-950 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-white transition-colors hover:bg-brand-600"
+            <button
+              type="button"
+              className="mt-2 w-full rounded-2xl bg-onyx-950 py-4 text-xs font-black uppercase tracking-[0.3em] text-white hover:bg-brand-600"
+              onClick={() => navigate("/")}
             >
               Back to home
-            </Link>
+            </button>
           </div>
         ) : (
-          <form onSubmit={(e) => void submit(e)} className="space-y-5">
-            {err && (
-              <div className="flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4">
+          <>
+            {error && (
+              <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-                <p className="text-xs font-medium leading-relaxed text-red-700">{err}</p>
+                <p className="text-xs font-medium leading-relaxed text-red-700">{error}</p>
               </div>
             )}
 
-            <PasswordField
-              label="New password"
-              value={password}
-              onChange={setPassword}
-              autoComplete="new-password"
-              placeholder="At least 6 characters"
-            />
+            <form onSubmit={(e) => void submit(e)} className="space-y-4">
+              <PasswordField
+                label="Current password"
+                value={oldPassword}
+                onChange={setOldPassword}
+                autoComplete="current-password"
+                placeholder="Enter current password"
+              />
+              <PasswordField
+                label="New password"
+                value={password}
+                onChange={setPassword}
+                autoComplete="new-password"
+                placeholder="Enter new password"
+              />
+              <PasswordField
+                label="Confirm new password"
+                value={confirm}
+                onChange={setConfirm}
+                autoComplete="new-password"
+                placeholder="Repeat new password"
+              />
 
-            <PasswordField
-              label="Confirm password"
-              value={confirm}
-              onChange={setConfirm}
-              autoComplete="new-password"
-              placeholder="Re-enter your password"
-            />
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full rounded-2xl bg-onyx-950 py-4 text-xs font-black uppercase tracking-[0.3em] text-white shadow-xl transition-all hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {busy ? "Saving…" : "Update password"}
+              </button>
+            </form>
 
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full rounded-2xl bg-onyx-950 py-4 text-xs font-black uppercase tracking-[0.3em] text-white shadow-xl transition-all hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {busy ? "Saving…" : "Update password"}
-            </button>
-          </form>
+            <p className="mt-5 text-center text-xs font-medium text-slate-500">
+              Forgot your current password?{" "}
+              <Link to="/auth/reset-password" className="font-semibold text-brand-600 hover:text-brand-700">
+                Reset via email
+              </Link>
+            </p>
+          </>
         )}
       </div>
-
-      {hasSession && sessionReady && (
-        <p className="mt-6 text-center text-xs font-medium text-slate-500">
-          <Link href="/" className="text-brand-600 transition-colors hover:text-brand-500">
-            Cancel and return home
-          </Link>
-        </p>
-      )}
     </div>
   );
+}
+
+export default function UpdatePasswordPage() {
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token");
+
+  if (token) {
+    return <ResetTokenRedirect />;
+  }
+
+  return <ChangePasswordForm />;
 }

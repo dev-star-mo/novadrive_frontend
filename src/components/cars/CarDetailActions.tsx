@@ -14,7 +14,7 @@ export function CarDetailActions({ car }: { car: Car }) {
       return;
     }
     // Block unverified users from proceeding to the booking modal
-    if (!user.email_confirmed_at) {
+    if (!user.email_verified) {
       openAuth("unverified");
       return;
     }

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { computeRentalTotal } from "@/lib/pricing";
 import type { Car } from "@/types/database";
 import { LocationPickerInput } from "@/components/ui/LocationPickerInput";
@@ -37,7 +36,6 @@ export function CheckoutClient({
   booking: BookingRow;
   car: Car | null;
 }) {
-  const router = useRouter();
   const [booking, setBooking] = useState(initialBooking);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +124,7 @@ export function CheckoutClient({
       }
       setBooking(json);
       setEditing(false);
-      router.refresh();
+      
     } catch {
       setEditError("Network error.");
     }
@@ -377,7 +375,7 @@ export function CheckoutClient({
         )}
 
         <Link
-          href="/my-bookings"
+          to="/my-bookings"
           className="mt-4 block text-center text-sm text-brand-600 hover:underline"
         >
           View my bookings

@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useAppUI } from "@/components/providers/app-ui-provider";
 import { useUserSession } from "@/components/providers/user-session-provider";
+import {
+  generateForgotPasswordToken,
+  fetchGoogleRedirect,
+  isUnverifiedLoginError,
+  loginUser,
+  registerUser,
+  resendVerificationEmail,
+} from "@/lib/auth/laravel-client";
 
-/** Password field with show/hide toggle */
+/* ─── Password field with show / hide toggle ─────────────────────────────── */
 function PasswordInput({
   value,
   onChange,
@@ -41,40 +48,41 @@ function PasswordInput({
   );
 }
 
+/* ─── Main modal ─────────────────────────────────────────────────────────── */
 export function AuthModal() {
   const { authOpen, authView, closeAuth, setAuthView } = useAppUI();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [subscribeToNewsletter, setSubscribeToNewsletter] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  const { user } = useUserSession();
-  const supabase = createClient();
+  const { user, acceptSession } = useUserSession();
 
+  /* Close modal when user becomes authenticated */
   useEffect(() => {
-    if (!user) return;
-    // Close the modal for fully authenticated users:
-    // - Google/OAuth users always have email_confirmed_at set
-    // - Email users who have confirmed their email
-    // - Email users where confirmation is disabled (email_confirmed_at may also be set)
-    if (user.email_confirmed_at || user.app_metadata?.provider === "google") {
+    if (user?.email_verified) {
       closeAuth();
     }
   }, [user, closeAuth]);
 
+  /* Reset form state when modal closes */
   useEffect(() => {
     if (!authOpen) {
       setError(null);
       setInfo(null);
+      setName("");
       setEmail("");
       setPassword("");
       setConfirm("");
+      setSubscribeToNewsletter(false);
     }
   }, [authOpen]);
 
-  // Populate email in unverified view from the current user
+  /* Pre-fill email in the "unverified" gate view */
   useEffect(() => {
     if (authView === "unverified" && user?.email) {
       setEmail(user.email);
@@ -83,131 +91,146 @@ export function AuthModal() {
 
   if (!authOpen) return null;
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-
+  /* ── Google sign-in: Laravel OAuth redirect ── */
   const signInGoogle = async () => {
-    setBusy(true);
     setError(null);
-    const { error: e } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${origin}/auth/callback` },
-    });
-    setBusy(false);
-    if (e) setError(e.message);
+    setInfo(null);
+    const result = await fetchGoogleRedirect();
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    window.location.assign(result.url);
   };
 
+  /* ── Email sign-in ── */
   const signInEmail = async () => {
+    if (!email.trim() || !password) {
+      setError("Please enter your email and password.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setInfo(null);
-    const { data, error: e } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    setBusy(false);
-    if (e) {
-      setError(e.message);
-      return;
+
+    try {
+      const result = await loginUser({ email: email.trim(), password });
+
+      if (!result.ok) {
+        const msg = result.error;
+        if (isUnverifiedLoginError(msg)) {
+          setError(null);
+          setInfo(null);
+          setAuthView("unverified");
+          return;
+        }
+        setError(msg);
+        return;
+      }
+
+      acceptSession(result.data.user);
+      closeAuth();
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    if (data.user && !data.user.email_confirmed_at) {
-      setInfo(
-        "Please confirm your email before signing in. Check your inbox for the verification link."
-      );
-      await supabase.auth.signOut();
-      return;
-    }
-    closeAuth();
   };
 
+  /* ── Sign-up: email + password only ── */
   const signUp = async () => {
-    setBusy(true);
-    setError(null);
-    setInfo(null);
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+
+    if (!trimmedName) {
+      setError("Please enter your name.");
+      return;
+    }
+    if (!trimmedEmail) {
+      setError("Please enter your email.");
+      return;
+    }
     if (password !== confirm) {
       setError("Password and confirm password must match.");
-      setBusy(false);
       return;
     }
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+
+    const result = await registerUser({
+      name: trimmedName,
+      email: trimmedEmail,
+      password,
+      confirm_password: confirm,
+      subscribe_to_newsletter: subscribeToNewsletter,
+    });
+
+    if (!result.ok) {
+      setError(result.error);
       setBusy(false);
       return;
     }
-    const { data: signUpData, error: e } = await supabase.auth.signUp({
-      email: email.trim(),
-      options: { emailRedirectTo: `${origin}/auth/callback?type=signup` },
-      password,
-    });
-    setBusy(false);
-    if (e) {
-      // Supabase returns this message when the email is already registered (confirm mode ON)
-      if (
-        e.message.toLowerCase().includes("already registered") ||
-        e.message.toLowerCase().includes("already exists") ||
-        e.message.toLowerCase().includes("user already")
-      ) {
-        setError(
-          "An account with this email already exists. Please sign in instead."
-        );
-        return;
-      }
-      setError(e.message);
-      return;
-    }
-    // When email confirmations are DISABLED, Supabase returns a fake success
-    // with an empty identities array when the email is already registered.
-    if (
-      signUpData.user &&
-      Array.isArray(signUpData.user.identities) &&
-      signUpData.user.identities.length === 0
-    ) {
-      setError(
-        "An account with this email already exists. Please sign in instead."
-      );
-      return;
-    }
+
+    setName("");
     setEmail("");
     setPassword("");
     setConfirm("");
+    setSubscribeToNewsletter(false);
     setAuthView("signin");
-    setInfo(
-      "Account created! Check your inbox to confirm your email. You can sign in once your email is verified."
-    );
+    setInfo(result.data.message);
+    setBusy(false);
   };
 
+  /* ── Forgot password ── */
   const sendReset = async () => {
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setInfo(null);
-    const { error: e } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${origin}/auth/callback?type=recovery`,
-    });
-    setBusy(false);
-    if (e) {
-      setError(e.message);
-      return;
+
+    try {
+      const result = await generateForgotPasswordToken(email);
+
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      setInfo(result.message);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    setInfo("If an account exists for this email, a reset link has been sent.");
   };
 
+  /* ── Resend verification email ── */
   const resendVerification = async () => {
-    if (!email.trim()) return;
+    const addr = email || user?.email || "";
+    if (!addr.trim()) return;
     setBusy(true);
     setError(null);
     setInfo(null);
-    const { error: e } = await supabase.auth.resend({
-      type: "signup",
-      email: email.trim(),
-      options: { emailRedirectTo: `${origin}/auth/callback?type=signup` },
-    });
-    setBusy(false);
-    if (e) {
-      setError(e.message);
-      return;
+
+    const result = await resendVerificationEmail(addr);
+
+    if (!result.ok) {
+      setError(result.error);
+    } else {
+      setInfo(result.message);
     }
-    setInfo("Verification email resent! Check your inbox.");
+    setBusy(false);
   };
 
+  /* ─────────────────────────────────────────────────────────── RENDER ───── */
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div
@@ -225,12 +248,13 @@ export function AuthModal() {
           ✕
         </button>
 
+        {/* ── Gate: must be signed in to book ── */}
         {authView === "gate" && (
           <>
             <h2 className="font-display text-xl font-bold text-ink">Book your car</h2>
             <p className="mt-3 text-slate-600">
-              You need to be signed in to make a booking. This ensures your booking is secure and you
-              can track your reservation.
+              You need to be signed in to make a booking. This ensures your booking is secure and
+              you can track your reservation.
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
@@ -261,19 +285,30 @@ export function AuthModal() {
               <h2 className="font-display text-xl font-bold text-ink">Verify your email</h2>
             </div>
             <p className="mt-3 text-sm text-slate-600">
-              Only verified accounts can book a car. A verification email has been sent to{" "}
-              <strong>{email || user?.email}</strong>. Please click the link in that email to
-              confirm your account, then come back to book.
+              You need to verify your email before you can sign in or book a car. A verification link
+              has been sent to <strong>{email || user?.email}</strong>. Please check your inbox (and
+              spam folder), click the link, then sign in again.
             </p>
             {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
             {info && <p className="mt-2 text-sm text-green-700">{info}</p>}
             <button
               type="button"
               className="mt-5 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-              disabled={busy}
+              disabled={busy || !(email.trim() || user?.email)}
               onClick={() => void resendVerification()}
             >
-              {busy ? "Sending…" : "Resend verification email"}
+              {busy ? "Sending…" : "Resend verification link"}
+            </button>
+            <button
+              type="button"
+              className="mt-2 w-full rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                setError(null);
+                setInfo(null);
+                setAuthView("signin");
+              }}
+            >
+              Back to sign in
             </button>
             <button
               type="button"
@@ -285,20 +320,24 @@ export function AuthModal() {
           </>
         )}
 
+        {/* ── Sign in ── */}
         {authView === "signin" && (
           <>
             <h2 className="font-display text-xl font-bold text-ink">Sign in</h2>
             {info && <p className="mt-2 text-sm text-brand-700">{info}</p>}
             {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+            {/* Google sign-in */}
             <button
               type="button"
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-medium hover:bg-slate-50"
-              onClick={() => void signInGoogle()}
+              onClick={signInGoogle}
               disabled={busy}
             >
               <GoogleIcon />
               Sign in with Google
             </button>
+
             <div className="relative my-5">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-200" />
@@ -307,6 +346,7 @@ export function AuthModal() {
                 <span className="bg-white px-2">Or continue with email</span>
               </div>
             </div>
+
             <label className="block text-sm font-medium text-slate-700">Email</label>
             <input
               className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
@@ -339,7 +379,7 @@ export function AuthModal() {
               disabled={busy}
               onClick={() => void signInEmail()}
             >
-              Sign in
+              {busy ? "Signing in…" : "Sign in"}
             </button>
             <p className="mt-4 text-center text-sm text-slate-600">
               No account?{" "}
@@ -358,6 +398,7 @@ export function AuthModal() {
           </>
         )}
 
+        {/* ── Sign up ── */}
         {authView === "signup" && (
           <>
             <h2 className="font-display text-xl font-bold text-ink">Create account</h2>
@@ -382,16 +423,18 @@ export function AuthModal() {
                 )}
               </p>
             )}
+
             {/* Google sign-up */}
             <button
               type="button"
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-medium hover:bg-slate-50"
-              onClick={() => void signInGoogle()}
+              onClick={signInGoogle}
               disabled={busy}
             >
               <GoogleIcon />
               Sign up with Google
             </button>
+
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-200" />
@@ -400,7 +443,17 @@ export function AuthModal() {
                 <span className="bg-white px-2">Or sign up with email</span>
               </div>
             </div>
-            <label className="block text-sm font-medium text-slate-700">Email</label>
+
+            <label className="block text-sm font-medium text-slate-700">Name</label>
+            <input
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              type="text"
+              autoComplete="name"
+              placeholder="Your full name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <label className="mt-3 block text-sm font-medium text-slate-700">Email</label>
             <input
               className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500"
               type="email"
@@ -416,20 +469,34 @@ export function AuthModal() {
               autoComplete="new-password"
               placeholder="At least 6 characters"
             />
-            <label className="mt-3 block text-sm font-medium text-slate-700">Confirm password</label>
+            <label className="mt-3 block text-sm font-medium text-slate-700">
+              Confirm password
+            </label>
             <PasswordInput
               value={confirm}
               onChange={setConfirm}
               autoComplete="new-password"
               placeholder="Repeat your password"
             />
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-3">
+              <input
+                type="checkbox"
+                checked={subscribeToNewsletter}
+                onChange={(e) => setSubscribeToNewsletter(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span className="text-sm leading-snug text-slate-600">
+                Subscribe to our newsletter. You&apos;ll get notified about discounts and promotions
+                we offer.
+              </span>
+            </label>
             <button
               type="button"
               className="mt-4 w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
               disabled={busy}
               onClick={() => void signUp()}
             >
-              Create account
+              {busy ? "Creating account…" : "Create account"}
             </button>
             <p className="mt-4 text-center text-sm text-slate-600">
               Already have an account?{" "}
@@ -444,6 +511,7 @@ export function AuthModal() {
           </>
         )}
 
+        {/* ── Reset password ── */}
         {authView === "reset" && (
           <>
             <h2 className="font-display text-xl font-bold text-ink">Reset password</h2>
@@ -474,7 +542,7 @@ export function AuthModal() {
                 disabled={busy}
                 onClick={() => void sendReset()}
               >
-                Send link
+                {busy ? "Sending…" : "Send link"}
               </button>
             </div>
           </>
@@ -484,9 +552,20 @@ export function AuthModal() {
   );
 }
 
+/* ─── Icons ──────────────────────────────────────────────────────────────── */
 function Eye() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
@@ -495,14 +574,24 @@ function Eye() {
 
 function EyeOff() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
       <line x1="1" y1="1" x2="23" y2="23" />
     </svg>
   );
 }
 
-/** Simple coloured Google "G" icon */
+/** Coloured Google "G" icon */
 function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>

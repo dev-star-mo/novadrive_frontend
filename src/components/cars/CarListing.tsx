@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
+import { Image } from "@/components/ui/Image";
+import { Link } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import {
   Search,
@@ -21,6 +21,7 @@ import { useAppUI } from "@/components/providers/app-ui-provider";
 
 type Props = {
   initialCars: Car[];
+  loadError?: string | null;
   initialQuery?: string;
   initialLocation?: string;
   initialFrom?: string;
@@ -39,6 +40,7 @@ const normalizedCategory = (car: Car): CarCategory => (car.category ?? "small_ca
 
 export function CarListing({
   initialCars,
+  loadError = null,
   initialQuery = "",
   initialLocation = "",
   initialFrom = "",
@@ -204,8 +206,12 @@ export function CarListing({
           <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-slate-50 text-slate-300 mb-6">
             <CarIcon className="h-10 w-10" />
           </div>
-          <p className="text-slate-500 text-xl font-medium tracking-tight">No vehicles found matching your criteria.</p>
-          <button onClick={() => { setQ(""); setLocation(""); setTransmission(""); setFuel(""); setMaxPrice(""); setActiveCategory("all"); }} className="mt-4 text-brand-600 font-bold hover:underline">Clear all filters</button>
+          <p className="text-slate-500 text-xl font-medium tracking-tight">
+            {loadError ?? "No vehicles found matching your criteria."}
+          </p>
+          {loadError ? null : (
+            <button onClick={() => { setQ(""); setLocation(""); setTransmission(""); setFuel(""); setMaxPrice(""); setActiveCategory("all"); }} className="mt-4 text-brand-600 font-bold hover:underline">Clear all filters</button>
+          )}
         </div>
       )}
 
@@ -321,7 +327,7 @@ export function CarListing({
                             </span>
                           </button>
                           <Link
-                            href={`/cars/${car.id}`}
+                            to={`/cars/${car.id}`}
                             className="flex-1 rounded-2xl border-2 border-slate-100 bg-white py-4 text-center text-[10px] font-extrabold uppercase tracking-widest text-onyx-950 hover:border-brand-600 hover:text-brand-600 transition-all duration-300"
                           >
                             Details

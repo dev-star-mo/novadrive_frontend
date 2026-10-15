@@ -20,7 +20,7 @@ import {
 import type { LeaseRequest } from "@/types/database";
 import type { CarCategory } from "@/types/database";
 import { CAR_CATEGORIES } from "@/types/database";
-import Image from "next/image";
+import { Image } from "@/components/ui/Image";
 
 type Props = { initialRequests: LeaseRequest[] };
 

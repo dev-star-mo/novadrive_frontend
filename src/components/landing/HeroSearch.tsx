@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
@@ -8,7 +8,7 @@ import { useUserSession } from "@/components/providers/user-session-provider";
 import { useAppUI } from "@/components/providers/app-ui-provider";
 
 export function HeroSearch() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { user } = useUserSession();
   const { openBooking, openAuth } = useAppUI();
   const [name, setName] = useState("");
@@ -16,7 +16,7 @@ export function HeroSearch() {
   const search = () => {
     const q = new URLSearchParams();
     if (name) q.set("name", name);
-    router.push(`/cars?${q.toString()}`);
+    navigate(`/cars?${q.toString()}`);
   };
 
   const book = () => {

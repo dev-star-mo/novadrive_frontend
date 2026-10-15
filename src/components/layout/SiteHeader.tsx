@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { Link } from "react-router-dom";
+import { Image } from "@/components/ui/Image";
+import { useLocation } from "react-router-dom";
 import { useState } from "react";
 import { useUserSession } from "@/components/providers/user-session-provider";
 import { useAppUI } from "@/components/providers/app-ui-provider";
@@ -19,7 +19,7 @@ const nav = [
 ];
 
 export function SiteHeader() {
-  const pathname = usePathname();
+  const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, loading, isAdmin } = useUserSession();
   const { openBooking, openAuth } = useAppUI();
@@ -38,7 +38,7 @@ export function SiteHeader() {
       {nav.map((item) => (
         <Link
           key={item.href}
-          href={item.href}
+          to={item.href}
           onClick={() => mobile && setMobileOpen(false)}
           className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${pathname === item.href.split("#")[0] && !item.href.includes("#")
             ? "bg-brand-50 text-brand-700"
@@ -50,7 +50,7 @@ export function SiteHeader() {
       ))}
       {isAdmin && (
         <Link
-          href="/admin"
+          to="/admin"
           onClick={() => mobile && setMobileOpen(false)}
           className={`rounded-lg px-3 py-2 text-sm font-bold tracking-widest uppercase text-brand-700 bg-brand-50 hover:bg-brand-100 ${mobile ? "block border-l-2 border-brand-600" : ""
             }`}
@@ -64,7 +64,7 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        <Link href="/" className="flex min-w-0 items-center gap-2 shrink-0">
+        <Link to="/" className="flex min-w-0 items-center gap-2 shrink-0">
           <Image
             src="/logo.png"
             alt="NovaDrive Logo"

@@ -9,105 +9,103 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { User } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/client";
+import { logoutUser } from "@/lib/auth/laravel-client";
+import type { AuthUser } from "@/lib/auth/types";
 import type { Profile } from "@/types/database";
 
 type UserSessionContextValue = {
-  user: User | null;
+  user: AuthUser | null;
   profile: Profile | null;
   loading: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   refreshProfile: () => Promise<void>;
-  signOut: () => Promise<void>;
+  acceptSession: (user: AuthUser) => void;
+  signOut: () => Promise<{ ok: true; message: string } | { ok: false; error: string }>;
 };
 
 const UserSessionContext = createContext<UserSessionContextValue | null>(null);
+const SESSION_USER_KEY = "nova_auth_user";
+
+function readStoredUser(): AuthUser | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(SESSION_USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredUser(user: AuthUser | null): void {
+  if (typeof window === "undefined") return;
+  if (!user) {
+    sessionStorage.removeItem(SESSION_USER_KEY);
+    return;
+  }
+  sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
+}
 
 export function UserSessionProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const supabase = useMemo(() => createClient(), []);
-
-  const loadProfile = useCallback(
-    async (uid: string) => {
-      const { data } = await supabase.from("profiles").select("*").eq("id", uid).single();
-      setProfile(data as Profile | null);
-    },
-    [supabase]
-  );
+  useEffect(() => {
+    setUser(readStoredUser());
+    setLoading(false);
+  }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (!user?.id) {
-      setProfile(null);
-      return;
-    }
-    await loadProfile(user.id);
-  }, [user?.id, loadProfile]);
+    setUser(readStoredUser());
+    setLoading(false);
+  }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const init = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (cancelled) return;
-      setUser(session?.user ?? null);
-      if (session?.user?.id) {
-        await loadProfile(session.user.id);
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    };
-
-    void init();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user?.id) {
-        await loadProfile(session.user.id);
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
-  }, [supabase, loadProfile]);
+  const acceptSession = useCallback((next: AuthUser) => {
+    writeStoredUser(next);
+    setUser(next);
+    setLoading(false);
+  }, []);
 
   const signOut = useCallback(async () => {
-    const wasAdmin = profile?.role === "admin";
-    await supabase.auth.signOut();
+    const result = await logoutUser();
+    if (!result.ok) return result;
+
+    writeStoredUser(null);
     setUser(null);
-    setProfile(null);
-    
-    // If admin or on admin page, redirect to home and reload
-    if (wasAdmin || window.location.pathname.startsWith("/admin")) {
+
+    if (window.location.pathname.startsWith("/admin")) {
       window.location.href = "/";
     } else {
       window.location.reload();
     }
-  }, [supabase, profile?.role]);
+
+    return result;
+  }, []);
+
+  const profile = useMemo<Profile | null>(() => {
+    if (!user) return null;
+    return {
+      id: user.id,
+      full_name: user.full_name,
+      role: user.role,
+      created_at: user.created_at,
+      updated_at: user.created_at,
+    };
+  }, [user]);
 
   const value = useMemo<UserSessionContextValue>(
     () => ({
       user,
       profile,
       loading,
-      isAdmin: profile?.role === "admin",
+      isAdmin: user?.role === "admin" || user?.role === "superadmin",
+      isSuperAdmin: user?.role === "superadmin",
       refreshProfile,
+      acceptSession,
       signOut,
     }),
-    [user, profile, loading, refreshProfile, signOut]
+    [user, profile, loading, refreshProfile, acceptSession, signOut]
   );
 
   return <UserSessionContext.Provider value={value}>{children}</UserSessionContext.Provider>;
